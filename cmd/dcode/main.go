@@ -34,7 +34,14 @@ const (
 var (
 	autoApprove = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
 	stripColors = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
+	debug       = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
 )
+
+func debugf(debugFile *os.File, format string, args ...interface{}) {
+	if debugFile != nil {
+		fmt.Fprintf(debugFile, format, args...)
+	}
+}
 
 type PermissionHandler struct {
 	ptmx         *os.File
@@ -59,17 +66,17 @@ func (p *PermissionHandler) processLine(line string) {
 	
 	// Log interesting lines
 	if len(strings.TrimSpace(cleanLine)) > 0 && !strings.HasPrefix(cleanLine, "[") {
-		fmt.Fprintf(p.debugFile, "[DEBUG] Line: %q\n", cleanLine)
+		debugf(p.debugFile, "[DEBUG] Line: %q\n", cleanLine)
 	}
 	if strings.Contains(cleanLine, "permission") || strings.Contains(cleanLine, "approval") || 
 	   strings.Contains(cleanLine, "requires") || strings.Contains(cleanLine, "Write(") || 
 	   strings.Contains(cleanLine, "rejected") {
-		fmt.Fprintf(p.debugFile, "[DEBUG] Potential permission line: %q\n", cleanLine)
+		debugf(p.debugFile, "[DEBUG] Potential permission line: %q\n", cleanLine)
 	}
 	
 	// Log permission prompts for debugging
 	if strings.Contains(cleanLine, "Do you want") {
-		fmt.Fprintf(p.debugFile, "[DEBUG] Permission prompt detected: %q\n", cleanLine)
+		debugf(p.debugFile, "[DEBUG] Permission prompt detected: %q\n", cleanLine)
 	}
 	
 	// Collect context lines
@@ -102,13 +109,13 @@ func (p *PermissionHandler) processLine(line string) {
 		
 		if contextIdentifier != p.appState.Prompt.LastLine {
 			if p.shouldProcessPrompt(line) {
-				fmt.Fprintf(p.debugFile, "[DEBUG] Detected permission prompt: %q\n", p.patterns.StripAnsi(line))
+				debugf(p.debugFile, "[DEBUG] Detected permission prompt: %q\n", p.patterns.StripAnsi(line))
 				p.appState.StartPromptCollectionWithContext(line, contextIdentifier)
 			} else {
-				fmt.Fprintf(p.debugFile, "[DEBUG] Permission prompt was BLOCKED by shouldProcessPrompt: %q\n", p.patterns.StripAnsi(line))
+				debugf(p.debugFile, "[DEBUG] Permission prompt was BLOCKED by shouldProcessPrompt: %q\n", p.patterns.StripAnsi(line))
 			}
 		} else {
-			fmt.Fprintf(p.debugFile, "[DEBUG] Permission prompt SKIPPED due to same context: %q\n", p.patterns.StripAnsi(line))
+			debugf(p.debugFile, "[DEBUG] Permission prompt SKIPPED due to same context: %q\n", p.patterns.StripAnsi(line))
 		}
 		return
 	}
@@ -130,7 +137,7 @@ func (p *PermissionHandler) shouldSkipLine(cleanLine string) bool {
 
 func (p *PermissionHandler) shouldProcessPrompt(line string) bool {
 	if !p.appState.ShouldProcessPrompt(line, p.patterns) {
-		fmt.Fprintf(p.debugFile, "[DEBUG] Skipping prompt due to processing rules: %q\n", p.patterns.StripAnsi(line))
+		debugf(p.debugFile, "[DEBUG] Skipping prompt due to processing rules: %q\n", p.patterns.StripAnsi(line))
 		return false
 	}
 	
@@ -138,13 +145,13 @@ func (p *PermissionHandler) shouldProcessPrompt(line string) bool {
 }
 
 func (p *PermissionHandler) processChoice(line, cleanLine string) {
-	fmt.Fprintf(p.debugFile, "[DEBUG] Checking line for choices: %q\n", cleanLine)
+	debugf(p.debugFile, "[DEBUG] Checking line for choices: %q\n", cleanLine)
 	
 	p.appState.AddChoice(line, p.patterns)
 	
 	// Check if this is the end of choices
 	if strings.TrimSpace(cleanLine) == "" || strings.Contains(cleanLine, "╰") || strings.Contains(cleanLine, "Your choice:") {
-		fmt.Fprintf(p.debugFile, "[DEBUG] End of choices detected, making decision\n")
+		debugf(p.debugFile, "[DEBUG] End of choices detected, making decision\n")
 		p.appState.Prompt.Started = false
 		
 		bestChoice := choice.GetBestChoiceFromState(p.appState, p.patterns, p.debugFile)
@@ -161,13 +168,18 @@ func (p *PermissionHandler) handleUserChoice(bestChoice string) {
 }
 
 func (p *PermissionHandler) sendAutoApprove(choice string) {
-	fmt.Fprintf(p.debugFile, "[DEBUG] Auto-approve mode, will send %s\n", choice)
+	debugf(p.debugFile, "[DEBUG] Auto-approve mode, will send %s\n", choice)
 	go func() {
 		time.Sleep(AutoApproveDelayMs * time.Millisecond)
-		debugFile, _ := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		var debugFile *os.File
+		if *debug {
+			debugFile, _ = os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		}
 		n, err := p.ptmx.WriteString(choice)
-		fmt.Fprintf(debugFile, "[DEBUG] Auto-approve WriteString(%q) returned n=%d, err=%v\n", choice, n, err)
-		debugFile.Close()
+		debugf(debugFile, "[DEBUG] Auto-approve WriteString(%q) returned n=%d, err=%v\n", choice, n, err)
+		if debugFile != nil {
+			debugFile.Close()
+		}
 		p.ptmx.Sync()
 	}()
 }
@@ -176,12 +188,15 @@ func (p *PermissionHandler) showDialog(bestChoice string) {
 	go func() {
 		userChoice := dialog.AskWithChoicesContextAndReason(p.appState.Prompt.LastLine, p.appState.Prompt.CollectedChoices, p.contextLines, p.appState.Prompt.TriggerReason, p.appState.Prompt.TriggerLine)
 		
-		debugFile, _ := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		fmt.Fprintf(debugFile, "[DEBUG] User selected choice %s\n", userChoice)
+		var debugFile *os.File
+		if *debug {
+			debugFile, _ = os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		}
+		debugf(debugFile, "[DEBUG] User selected choice %s\n", userChoice)
 		
 		if userChoice != "" {
 			n, err := p.ptmx.WriteString(userChoice)
-			fmt.Fprintf(debugFile, "[DEBUG] User choice WriteString(%q) returned n=%d, err=%v\n", userChoice, n, err)
+			debugf(debugFile, "[DEBUG] User choice WriteString(%q) returned n=%d, err=%v\n", userChoice, n, err)
 			
 			// Set cooldown in deduplication manager
 			p.appState.Deduplicator.SetDialogCooldown("main_dialog")
@@ -190,17 +205,24 @@ func (p *PermissionHandler) showDialog(bestChoice string) {
 				time.Sleep(DialogResetDelayMs * time.Millisecond)
 				p.appState.Prompt.JustShown = false
 				p.appState.Deduplicator.ClearCooldown("main_dialog")
-				debugFile2, _ := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-				fmt.Fprintf(debugFile2, "[DEBUG] Dialog cooldown reset\n")
-				debugFile2.Close()
+				var debugFile2 *os.File
+				if *debug {
+					debugFile2, _ = os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+				}
+				debugf(debugFile2, "[DEBUG] Dialog cooldown reset\n")
+				if debugFile2 != nil {
+					debugFile2.Close()
+				}
 			}()
 			
 			p.ptmx.Sync()
 		} else {
-			fmt.Fprintf(debugFile, "[DEBUG] No choice to send (dialog not shown yet)\n")
+			debugf(debugFile, "[DEBUG] No choice to send (dialog not shown yet)\n")
 		}
 		
-		debugFile.Close()
+		if debugFile != nil {
+			debugFile.Close()
+		}
 	}()
 }
 
@@ -213,6 +235,8 @@ func main() {
 			*autoApprove = true
 		} else if arg == "-strip-colors" || arg == "--strip-colors" {
 			*stripColors = true
+		} else if arg == "-debug" || arg == "--debug" {
+			*debug = true
 		} else {
 			args = append(args, arg)
 		}
@@ -222,8 +246,13 @@ func main() {
 	stat, _ := os.Stdin.Stat()
 	isPipe := (stat.Mode() & os.ModeCharDevice) == 0
 	
-	// Debug logging
-	debugFile, _ := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	// Debug logging - only create file if debug flag is enabled
+	var debugFile *os.File
+	if *debug {
+		debugFile, _ = os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	} else {
+		debugFile = nil
+	}
 	
 	cmd := exec.Command("claude", args...)
 
@@ -239,7 +268,7 @@ func main() {
 	if !isPipe {
 		if size, err := pty.GetsizeFull(os.Stdin); err == nil {
 			pty.Setsize(ptmx, size)
-			fmt.Fprintf(debugFile, "[DEBUG] Set initial terminal size: %dx%d\n", size.Cols, size.Rows)
+			debugf(debugFile, "[DEBUG] Set initial terminal size: %dx%d\n", size.Cols, size.Rows)
 		}
 		
 		// Handle terminal resize
@@ -249,15 +278,22 @@ func main() {
 			for range sigwinch {
 				if size, err := pty.GetsizeFull(os.Stdin); err == nil {
 					pty.Setsize(ptmx, size)
-					debugFile2, _ := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-					fmt.Fprintf(debugFile2, "[DEBUG] Terminal resized: %dx%d\n", size.Cols, size.Rows)
-					debugFile2.Close()
+					var debugFile2 *os.File
+					if *debug {
+						debugFile2, _ = os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+					}
+					debugf(debugFile2, "[DEBUG] Terminal resized: %dx%d\n", size.Cols, size.Rows)
+					if debugFile2 != nil {
+						debugFile2.Close()
+					}
 				}
 			}
 		}()
 	}
-	fmt.Fprintf(debugFile, "[DEBUG] Main: isPipe=%v, stat.Mode()=%v\n", isPipe, stat.Mode())
-	debugFile.Close()
+	debugf(debugFile, "[DEBUG] Main: isPipe=%v, stat.Mode()=%v\n", isPipe, stat.Mode())
+	if debugFile != nil {
+		debugFile.Close()
+	}
 	
 	var oldState *term.State
 	if !isPipe {
@@ -276,29 +312,36 @@ func main() {
 	if isPipe {
 		// For piped input, read line by line and send with proper termination
 		go func() {
-			debugFile, _ := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-			defer debugFile.Close()
+			var debugFile *os.File
+			if *debug {
+				debugFile, _ = os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+			}
+			defer func() {
+				if debugFile != nil {
+					debugFile.Close()
+				}
+			}()
 			
-			fmt.Fprintf(debugFile, "[DEBUG] Starting piped input processing\n")
+			debugf(debugFile, "[DEBUG] Starting piped input processing\n")
 			scanner := bufio.NewScanner(os.Stdin)
 			for scanner.Scan() {
 				line := scanner.Text()
-				fmt.Fprintf(debugFile, "[DEBUG] Processing line: %q\n", line)
+				debugf(debugFile, "[DEBUG] Processing line: %q\n", line)
 				
 				// Send the text character by character
 				for _, char := range line {
 					ptmx.WriteString(string(char))
 					time.Sleep(CharDelayMs * time.Millisecond)
 				}
-				fmt.Fprintf(debugFile, "[DEBUG] Sent text, now sending Enter\n")
+				debugf(debugFile, "[DEBUG] Sent text, now sending Enter\n")
 				// Then send Enter key - try different approaches
 				time.Sleep(LineProcessDelayMs * time.Millisecond)
 				ptmx.WriteString("\n")
 				ptmx.Sync()
-				fmt.Fprintf(debugFile, "[DEBUG] Sent Enter, done with line\n")
+				debugf(debugFile, "[DEBUG] Sent Enter, done with line\n")
 				time.Sleep(FinalDelayMs * time.Millisecond)
 			}
-			fmt.Fprintf(debugFile, "[DEBUG] Finished piped input processing\n")
+			debugf(debugFile, "[DEBUG] Finished piped input processing\n")
 		}()
 	} else {
 		// For interactive input, use direct copy
@@ -312,11 +355,20 @@ func main() {
 	dialog.InitGlobals()
 	
 	// Open debug file
-	debugFile2, err := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		debugFile2 = os.Stderr
+	var debugFile2 *os.File
+	if *debug {
+		debugFile2, err = os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			debugFile2 = os.Stderr
+		}
+	} else {
+		debugFile2 = nil
 	}
-	defer debugFile2.Close()
+	defer func() {
+		if debugFile2 != nil {
+			debugFile2.Close()
+		}
+	}()
 
 	// Create display writer
 	var displayWriter io.Writer
@@ -349,7 +401,7 @@ func main() {
 			if err == io.EOF {
 				break
 			}
-			fmt.Fprintf(debugFile2, "[ERROR] Reading from PTY: %v\n", err)
+			debugf(debugFile2, "[ERROR] Reading from PTY: %v\n", err)
 			break
 		}
 		
