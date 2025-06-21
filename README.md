@@ -1,5 +1,3 @@
-# 🚧🚧🚧 WORK IN PROGRESS 🚧🚧🚧
-
 # dcode - Dialog Code
 
 A Go wrapper for Claude Code that adds macOS permission dialog handling and seamless option passthrough.
