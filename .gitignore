@@ -53,6 +53,7 @@ vendor/
 *.temp
 TEST*
 test*
+!.github/workflows/test.yml
 
 # Backup files
 *.bak
