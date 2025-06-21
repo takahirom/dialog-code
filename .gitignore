@@ -1,0 +1,75 @@
+# Compiled binaries
+/dcode
+*.exe
+
+# Bazel build artifacts
+bazel-*
+.bazel/
+.bazelrc.local
+.bazelversion
+MODULE.bazel.lock
+WORKSPACE.disabled
+WORKSPACE.backup
+
+# Debug and log files
+debug_output.log
+debug.log
+*.log
+
+# Go build artifacts
+*.o
+*.a
+*.so
+
+# Go test files
+*.test
+*.prof
+
+# Go module cache (if using vendor)
+vendor/
+
+# Go build cache
+.cache/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Claude Code settings
+.claude/settings.local.json
+.claude/cache/
+.claude/temp/
+
+# macOS files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Temporary files
+*.tmp
+*.temp
+TEST*
+test*
+
+# Backup files
+*.bak
+*.backup
+
+# Coverage reports
+*.out
+coverage.html
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Runtime files
+*.pid
+*.seed
+*.pid.lock
