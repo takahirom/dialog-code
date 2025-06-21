@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/takahirom/dialog-code/internal/deduplication"
 )
 
 const (
@@ -49,10 +51,19 @@ type AppState struct {
 	Ptmx             *os.File
 	AutoApprove      bool
 	StripColors      bool
+	Deduplicator     *deduplication.DeduplicationManager
 }
 
 // NewAppState creates a new application state
 func NewAppState() *AppState {
+	config := deduplication.Config{
+		PromptDuplicationSeconds: 1, // Very short window only for true duplicates (accidental double-clicks)
+		DialogCooldownMs:         500, // From main.go DialogCooldownMs  
+		ProcessingCooldownMs:     PromptProcessingCooldownMs,
+		MaxEntries:               1000,
+		CleanupInterval:          time.Minute * 5,
+	}
+	
 	return &AppState{
 		Dialog: &DialogState{},
 		Prompt: &PromptState{
@@ -61,6 +72,7 @@ func NewAppState() *AppState {
 			Context:          make([]string, 0),
 			ContextLines:     DefaultContextLines,
 		},
+		Deduplicator: deduplication.NewDeduplicationManager(config),
 	}
 }
 
@@ -95,24 +107,27 @@ func (r *RegexPatterns) StripAnsi(s string) string {
 
 // ShouldProcessPrompt determines if a prompt should be processed based on cooldown and duplicate detection
 func (state *AppState) ShouldProcessPrompt(prompt string, regexPatterns *RegexPatterns) bool {
-	cleanPrompt := regexPatterns.StripAnsi(prompt)
+	cooldownKey := "main_dialog"
 	
-	// Check if we've already processed this exact prompt recently
-	if lastProcessed, exists := state.Prompt.Processed[cleanPrompt]; exists {
-		if time.Since(lastProcessed) < PromptDuplicationSeconds*time.Second {
-			return false
-		}
-		// If more than specified time has passed, allow reprocessing
-		delete(state.Prompt.Processed, cleanPrompt)
-	}
-	
-	// Check cooldown - but only if we actually showed a dialog recently
-	if state.Prompt.JustShown && time.Since(state.Prompt.Cooldown) < PromptProcessingCooldownMs*time.Millisecond {
+	// Check cooldown first (short-term dialog spacing)
+	cooldownStates := state.Deduplicator.GetCooldownStates()
+	if cooldownState, exists := cooldownStates[cooldownKey]; exists && cooldownState.JustShown {
+		// Only block if we're still in the immediate cooldown period
 		return false
 	}
 	
-	// Mark this prompt as processed with current timestamp
+	// Re-enable duplicate detection with proper logic
+	if !state.Deduplicator.ShouldProcessPrompt(prompt) {
+		return false
+	}
+	
+	// Mark as processed in deduplication manager
+	state.Deduplicator.MarkPromptProcessed(prompt)
+	
+	// Also mark in the old system for backwards compatibility during transition
+	cleanPrompt := regexPatterns.StripAnsi(prompt)
 	state.Prompt.Processed[cleanPrompt] = time.Now()
+	
 	return true
 }
 
@@ -136,6 +151,15 @@ func (state *AppState) AddContextLine(line string, regexPatterns *RegexPatterns)
 // StartPromptCollection starts collecting choices for a new prompt
 func (state *AppState) StartPromptCollection(prompt string) {
 	state.Prompt.LastLine = prompt
+	state.Prompt.Started = true
+	state.Prompt.CollectedChoices = make(map[string]string) // Reset choices
+	state.Prompt.TriggerLine = prompt
+	state.Prompt.TriggerReason = state.identifyTriggerReason(prompt, state.Prompt.Context)
+}
+
+// StartPromptCollectionWithContext starts collecting choices with context identifier
+func (state *AppState) StartPromptCollectionWithContext(prompt string, contextIdentifier string) {
+	state.Prompt.LastLine = contextIdentifier // Use context identifier instead of just prompt
 	state.Prompt.Started = true
 	state.Prompt.CollectedChoices = make(map[string]string) // Reset choices
 	state.Prompt.TriggerLine = prompt

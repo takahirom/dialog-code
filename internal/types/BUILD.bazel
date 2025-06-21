@@ -5,6 +5,7 @@ go_library(
     srcs = ["types.go"],
     importpath = "github.com/takahirom/dialog-code/internal/types",
     visibility = ["//:__subpackages__"],
+    deps = ["//internal/deduplication"],
 )
 
 go_test(

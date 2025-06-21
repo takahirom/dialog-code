@@ -67,6 +67,11 @@ func (p *PermissionHandler) processLine(line string) {
 		fmt.Fprintf(p.debugFile, "[DEBUG] Potential permission line: %q\n", cleanLine)
 	}
 	
+	// Log permission prompts for debugging
+	if strings.Contains(cleanLine, "Do you want") {
+		fmt.Fprintf(p.debugFile, "[DEBUG] Permission prompt detected: %q\n", cleanLine)
+	}
+	
 	// Collect context lines
 	if !p.appState.Prompt.Started && len(strings.TrimSpace(cleanLine)) > 0 && !strings.HasPrefix(cleanLine, "[DEBUG]") {
 		p.contextLines = append(p.contextLines, cleanLine)
@@ -81,10 +86,29 @@ func (p *PermissionHandler) processLine(line string) {
 	}
 	
 	// Check for permission prompt start
-	if p.patterns.Permit.MatchString(line) && line != p.appState.Prompt.LastLine {
-		if p.shouldProcessPrompt(line) {
-			fmt.Fprintf(p.debugFile, "[DEBUG] Detected permission prompt: %q\n", p.patterns.StripAnsi(line))
-			p.appState.StartPromptCollection(line)
+	// Skip lines that contain command execution indicators (⏺)
+	if p.patterns.Permit.MatchString(line) && !strings.Contains(line, "⏺") {
+		// Create a context-aware identifier for this prompt
+		// Include recent context lines to distinguish between different commands
+		contextIdentifier := ""
+		if len(p.contextLines) > 0 {
+			// Use the last few context lines to create a unique identifier
+			contextLinesToInclude := 3
+			for i := len(p.contextLines) - contextLinesToInclude; i < len(p.contextLines) && i >= 0; i++ {
+				contextIdentifier += p.contextLines[i] + "|"
+			}
+		}
+		contextIdentifier += p.patterns.StripAnsi(line)
+		
+		if contextIdentifier != p.appState.Prompt.LastLine {
+			if p.shouldProcessPrompt(line) {
+				fmt.Fprintf(p.debugFile, "[DEBUG] Detected permission prompt: %q\n", p.patterns.StripAnsi(line))
+				p.appState.StartPromptCollectionWithContext(line, contextIdentifier)
+			} else {
+				fmt.Fprintf(p.debugFile, "[DEBUG] Permission prompt was BLOCKED by shouldProcessPrompt: %q\n", p.patterns.StripAnsi(line))
+			}
+		} else {
+			fmt.Fprintf(p.debugFile, "[DEBUG] Permission prompt SKIPPED due to same context: %q\n", p.patterns.StripAnsi(line))
 		}
 		return
 	}
@@ -105,11 +129,6 @@ func (p *PermissionHandler) shouldSkipLine(cleanLine string) bool {
 }
 
 func (p *PermissionHandler) shouldProcessPrompt(line string) bool {
-	if p.appState.Prompt.JustShown && time.Since(p.appState.Prompt.Cooldown) < DialogCooldownMs*time.Millisecond {
-		fmt.Fprintf(p.debugFile, "[DEBUG] Skipping prompt due to recent dialog cooldown: %q\n", p.patterns.StripAnsi(line))
-		return false
-	}
-	
 	if !p.appState.ShouldProcessPrompt(line, p.patterns) {
 		fmt.Fprintf(p.debugFile, "[DEBUG] Skipping prompt due to processing rules: %q\n", p.patterns.StripAnsi(line))
 		return false
@@ -164,9 +183,13 @@ func (p *PermissionHandler) showDialog(bestChoice string) {
 			n, err := p.ptmx.WriteString(userChoice)
 			fmt.Fprintf(debugFile, "[DEBUG] User choice WriteString(%q) returned n=%d, err=%v\n", userChoice, n, err)
 			
+			// Set cooldown in deduplication manager
+			p.appState.Deduplicator.SetDialogCooldown("main_dialog")
+			
 			go func() {
 				time.Sleep(DialogResetDelayMs * time.Millisecond)
 				p.appState.Prompt.JustShown = false
+				p.appState.Deduplicator.ClearCooldown("main_dialog")
 				debugFile2, _ := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 				fmt.Fprintf(debugFile2, "[DEBUG] Dialog cooldown reset\n")
 				debugFile2.Close()
