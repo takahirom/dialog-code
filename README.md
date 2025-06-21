@@ -21,4 +21,5 @@ go install github.com/takahirom/dialog-code/cmd/dcode@latest
 dcode
 dcode --help
 dcode --resume
+dcode --debug  # Enable debug logging (creates debug_output.log)
 ```
