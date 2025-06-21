@@ -93,8 +93,7 @@ func (p *PermissionHandler) processLine(line string) {
 	}
 	
 	// Check for permission prompt start
-	// Skip lines that contain command execution indicators (⏺)
-	if p.patterns.Permit.MatchString(line) && !strings.Contains(line, "⏺") {
+	if p.patterns.Permit.MatchString(line) {
 		// Create a context-aware identifier for this prompt
 		// Include recent context lines to distinguish between different commands
 		contextIdentifier := ""
@@ -106,6 +105,9 @@ func (p *PermissionHandler) processLine(line string) {
 			}
 		}
 		contextIdentifier += p.patterns.StripAnsi(line)
+		
+		// Add timestamp to make each prompt unique
+		contextIdentifier += "|" + fmt.Sprintf("%d", time.Now().UnixNano())
 		
 		if contextIdentifier != p.appState.Prompt.LastLine {
 			if p.shouldProcessPrompt(line) {
