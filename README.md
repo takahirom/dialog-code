@@ -4,7 +4,7 @@ A Go wrapper for Claude Code that adds macOS permission dialog handling and seam
 
 **Vibe coded** - This project was created with AI assistance.
 
-![image](https://github.com/user-attachments/assets/85fdf549-a7a6-465c-a00d-e7e8df2a1ff4)
+![image](https://github.com/user-attachments/assets/b217ab55-0586-40ec-bc09-82d37e9b3b19)
 
 ## ✨ Features
 
