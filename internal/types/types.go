@@ -57,7 +57,7 @@ type AppState struct {
 // NewAppState creates a new application state
 func NewAppState() *AppState {
 	config := deduplication.Config{
-		PromptDuplicationSeconds: 1, // Very short window only for true duplicates (accidental double-clicks)
+		PromptDuplicationSeconds: 0, // Disable simple text-based deduplication - use context-aware deduplication instead
 		DialogCooldownMs:         500, // From main.go DialogCooldownMs  
 		ProcessingCooldownMs:     PromptProcessingCooldownMs,
 		MaxEntries:               1000,

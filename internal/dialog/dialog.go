@@ -293,14 +293,26 @@ func cleanChoiceText(choice string) string {
 
 // executeAppleScriptDialog executes the AppleScript and returns the choice
 func executeAppleScriptDialog(cleanMsg string, buttons []string, buttonToChoice map[string]string, debugFile *os.File) string {
-	buttonsStr := `{"` + strings.Join(buttons, `","`) + `"}`
-	script := `display dialog "` + strings.ReplaceAll(cleanMsg, `"`, `\"`) + `" with title "Claude Permission" buttons ` + buttonsStr + ` default button "` + buttons[0] + `"`
+	// Clean the message to avoid AppleScript parsing issues
+	cleanMsg = sanitizeMessageForAppleScript(cleanMsg)
+	
+	// Ensure buttons don't contain problematic characters
+	var cleanButtons []string
+	cleanButtonToChoice := make(map[string]string)
+	for _, button := range buttons {
+		cleanButton := sanitizeButtonForAppleScript(button)
+		cleanButtons = append(cleanButtons, cleanButton)
+		cleanButtonToChoice[cleanButton] = buttonToChoice[button]
+	}
+	
+	buttonsStr := `{"` + strings.Join(cleanButtons, `","`) + `"}`
+	script := `display dialog "` + cleanMsg + `" with title "Claude Permission" buttons ` + buttonsStr + ` default button "` + cleanButtons[0] + `"`
 	
 	fmt.Fprintf(debugFile, "[DEBUG] Executing AppleScript: %s\n", script)
 	
 	out, err := exec.Command("osascript", "-e", script).CombinedOutput()
 	if err != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] AppleScript error: %v\n", err)
+		fmt.Fprintf(debugFile, "[DEBUG] AppleScript error: %v, output: %s\n", err, string(out))
 		return "3" // Default to No on error
 	}
 	
@@ -308,7 +320,7 @@ func executeAppleScriptDialog(cleanMsg string, buttons []string, buttonToChoice 
 	
 	// Parse which button was clicked
 	outStr := string(out)
-	for button, choiceNum := range buttonToChoice {
+	for button, choiceNum := range cleanButtonToChoice {
 		if strings.Contains(outStr, "button returned:"+button) {
 			fmt.Fprintf(debugFile, "[DEBUG] Button %q clicked, returning %s\n", button, choiceNum)
 			return choiceNum
@@ -317,6 +329,66 @@ func executeAppleScriptDialog(cleanMsg string, buttons []string, buttonToChoice 
 	
 	fmt.Fprintf(debugFile, "[DEBUG] No button match found, returning default\n")
 	return "3" // Default to No
+}
+
+// sanitizeMessageForAppleScript cleans up message text to avoid AppleScript parsing issues
+func sanitizeMessageForAppleScript(msg string) string {
+	// Remove or replace problematic characters that cause AppleScript parsing errors
+	msg = strings.ReplaceAll(msg, `"`, `'`)  // Replace double quotes with single quotes
+	msg = strings.ReplaceAll(msg, `\`, ``)   // Remove backslashes
+	msg = strings.ReplaceAll(msg, "\n", " ") // Replace newlines with spaces to avoid multi-line issues
+	msg = strings.ReplaceAll(msg, "\r", " ") // Replace carriage returns
+	msg = strings.ReplaceAll(msg, "\t", " ") // Replace tabs
+	
+	// Remove pipe characters and other special formatting that cause issues
+	msg = strings.ReplaceAll(msg, "|", " ")
+	msg = strings.ReplaceAll(msg, "│", " ")
+	msg = strings.ReplaceAll(msg, "\\|", " ") // Escaped pipes
+	
+	// Remove emojis and special Unicode characters that might cause issues
+	msg = strings.ReplaceAll(msg, "🔒", "")
+	msg = strings.ReplaceAll(msg, "⏺", "")
+	
+	// Handle Japanese characters and other special regex characters that cause AppleScript issues
+	msg = strings.ReplaceAll(msg, "シーク", "seek")
+	msg = strings.ReplaceAll(msg, "\\;", ";")
+	msg = strings.ReplaceAll(msg, "\\{", "{")
+	msg = strings.ReplaceAll(msg, "\\}", "}")
+	
+	// Simplify complex file paths and commands to avoid AppleScript parsing issues
+	if strings.Contains(msg, "find ") && strings.Contains(msg, "-exec") {
+		// Simplify find commands to just show the essential info
+		msg = "Execute find command in project directory?"
+	}
+	
+	// Limit message length to avoid AppleScript limitations
+	if len(msg) > 150 {
+		msg = msg[:147] + "..."
+	}
+	
+	// Clean up multiple spaces
+	for strings.Contains(msg, "  ") {
+		msg = strings.ReplaceAll(msg, "  ", " ")
+	}
+	
+	return strings.TrimSpace(msg)
+}
+
+// sanitizeButtonForAppleScript cleans up button text to avoid AppleScript parsing issues
+func sanitizeButtonForAppleScript(button string) string {
+	// Replace problematic characters in button text
+	button = strings.ReplaceAll(button, `"`, `'`)
+	button = strings.ReplaceAll(button, `\`, ``)
+	button = strings.ReplaceAll(button, "\n", " ")
+	button = strings.ReplaceAll(button, "\r", " ")
+	button = strings.ReplaceAll(button, "\t", " ")
+	
+	// Limit button text length
+	if len(button) > 50 {
+		button = button[:47] + "..."
+	}
+	
+	return strings.TrimSpace(button)
 }
 
 // Send input after output stabilizes
