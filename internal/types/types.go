@@ -57,7 +57,7 @@ type AppState struct {
 // NewAppState creates a new application state
 func NewAppState() *AppState {
 	config := deduplication.Config{
-		PromptDuplicationSeconds: 0, // Disable simple text-based deduplication - use context-aware deduplication instead
+		PromptDuplicationSeconds: PromptDuplicationSeconds, // Use configured deduplication time
 		DialogCooldownMs:         500, // From main.go DialogCooldownMs  
 		ProcessingCooldownMs:     PromptProcessingCooldownMs,
 		MaxEntries:               1000,
@@ -116,17 +116,13 @@ func (state *AppState) ShouldProcessPrompt(prompt string, regexPatterns *RegexPa
 		return false
 	}
 	
-	// Re-enable duplicate detection with proper logic
+	// Use the new deduplication system
 	if !state.Deduplicator.ShouldProcessPrompt(prompt) {
 		return false
 	}
 	
 	// Mark as processed in deduplication manager
 	state.Deduplicator.MarkPromptProcessed(prompt)
-	
-	// Also mark in the old system for backwards compatibility during transition
-	cleanPrompt := regexPatterns.StripAnsi(prompt)
-	state.Prompt.Processed[cleanPrompt] = time.Now()
 	
 	return true
 }
