@@ -68,24 +68,11 @@ func GetContextualMessage(prompt string, context []string, regexPatterns *types.
 	if len(context) > 0 {
 		message += "\n\nContext:\n"
 		for _, contextLine := range context {
-			// Include meaningful lines - be more inclusive to show more context
-			if strings.Contains(contextLine, "Write(") || 
-			   strings.Contains(contextLine, "Read(") || 
-			   strings.Contains(contextLine, "Bash(") ||
-			   strings.Contains(contextLine, "file") ||
-			   strings.Contains(contextLine, "permission") ||
-			   strings.Contains(contextLine, "Error") ||
-			   strings.Contains(contextLine, "Failed") ||
-			   strings.Contains(contextLine, "Success") ||
-			   strings.Contains(contextLine, "Search(") ||
-			   strings.Contains(contextLine, "dependencies") ||
-			   strings.Contains(contextLine, "module") ||
-			   strings.Contains(contextLine, "Check") ||
-			   len(contextLine) > 25 { // Include lines over 25 chars as they're likely meaningful
-				// Clean up the context line by removing pipe characters and extra whitespace
-				cleanContextLine := strings.Trim(contextLine, "│ \t")
-				cleanContextLine = strings.TrimRight(cleanContextLine, "│ \t\r\n\u00A0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u202F\u205F\u3000◯○◉●>?─━┌┐└┘├┤┬┴┼╭╮╯╰╠╣╦╩╬⧉")
-				cleanContextLine = strings.TrimSpace(cleanContextLine)
+			// Clean up the context line by removing pipe characters and extra whitespace
+			cleanContextLine := strings.Trim(contextLine, "│ \t")
+			cleanContextLine = strings.TrimRight(cleanContextLine, "│ \t\r\n\u00A0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u202F\u205F\u3000◯○◉●>?─━┌┐└┘├┤┬┴┼╭╮╯╰╠╣╦╩╬⧉")
+			cleanContextLine = strings.TrimSpace(cleanContextLine)
+			if len(cleanContextLine) > 0 {
 				message += "• " + cleanContextLine + "\n"
 			}
 		}
@@ -119,24 +106,11 @@ func GetContextualMessageWithReason(prompt string, context []string, triggerReas
 	if len(context) > 0 {
 		message += "\n\nContext:\n"
 		for _, contextLine := range context {
-			// Include meaningful lines - be more inclusive to show more context
-			if strings.Contains(contextLine, "Write(") || 
-			   strings.Contains(contextLine, "Read(") || 
-			   strings.Contains(contextLine, "Bash(") ||
-			   strings.Contains(contextLine, "file") ||
-			   strings.Contains(contextLine, "permission") ||
-			   strings.Contains(contextLine, "Error") ||
-			   strings.Contains(contextLine, "Failed") ||
-			   strings.Contains(contextLine, "Success") ||
-			   strings.Contains(contextLine, "Search(") ||
-			   strings.Contains(contextLine, "dependencies") ||
-			   strings.Contains(contextLine, "module") ||
-			   strings.Contains(contextLine, "Check") ||
-			   len(contextLine) > 25 { // Include lines over 25 chars as they're likely meaningful
-				// Clean up the context line by removing pipe characters and extra whitespace
-				cleanContextLine := strings.Trim(contextLine, "│ \t")
-				cleanContextLine = strings.TrimRight(cleanContextLine, "│ \t\r\n\u00A0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u202F\u205F\u3000◯○◉●>?─━┌┐└┘├┤┬┴┼╭╮╯╰╠╣╦╩╬⧉")
-				cleanContextLine = strings.TrimSpace(cleanContextLine)
+			// Clean up the context line by removing pipe characters and extra whitespace
+			cleanContextLine := strings.Trim(contextLine, "│ \t")
+			cleanContextLine = strings.TrimRight(cleanContextLine, "│ \t\r\n\u00A0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u200B\u202F\u205F\u3000◯○◉●>?─━┌┐└┘├┤┬┴┼╭╮╯╰╠╣╦╩╬⧉")
+			cleanContextLine = strings.TrimSpace(cleanContextLine)
+			if len(cleanContextLine) > 0 {
 				message += "• " + cleanContextLine + "\n"
 			}
 		}

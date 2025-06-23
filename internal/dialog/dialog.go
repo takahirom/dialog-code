@@ -336,7 +336,6 @@ func sanitizeMessageForAppleScript(msg string) string {
 	// Remove or replace problematic characters that cause AppleScript parsing errors
 	msg = strings.ReplaceAll(msg, `"`, `'`)  // Replace double quotes with single quotes
 	msg = strings.ReplaceAll(msg, `\`, ``)   // Remove backslashes
-	msg = strings.ReplaceAll(msg, "\n", " ") // Replace newlines with spaces to avoid multi-line issues
 	msg = strings.ReplaceAll(msg, "\r", " ") // Replace carriage returns
 	msg = strings.ReplaceAll(msg, "\t", " ") // Replace tabs
 	
@@ -359,11 +358,6 @@ func sanitizeMessageForAppleScript(msg string) string {
 	if strings.Contains(msg, "find ") && strings.Contains(msg, "-exec") {
 		// Simplify find commands to just show the essential info
 		msg = "Execute find command in project directory?"
-	}
-	
-	// Limit message length to avoid AppleScript limitations
-	if len(msg) > 150 {
-		msg = msg[:147] + "..."
 	}
 	
 	// Clean up multiple spaces
