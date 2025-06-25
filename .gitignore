@@ -5,6 +5,7 @@
 # Bazel build artifacts
 bazel-*
 .bazel/
+/bazel-dialog-code/
 .bazelrc.local
 .bazelversion
 MODULE.bazel.lock

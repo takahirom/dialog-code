@@ -7,6 +7,7 @@ go_library(
     visibility = ["//visibility:private"],
     deps = [
         "//internal/choice",
+        "//internal/debug",
         "//internal/dialog",
         "//internal/types",
         "@com_github_creack_pty//:pty",

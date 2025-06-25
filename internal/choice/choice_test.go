@@ -16,7 +16,7 @@ func TestGetBestChoice(t *testing.T) {
 			"2": "2. Deny this action",
 		}
 		
-		result := GetBestChoice(choices, patterns, nil)
+		result := GetBestChoice(choices, patterns)
 		if result != "1" {
 			t.Errorf("Expected choice 1 (Allow), got %q", result)
 		}
@@ -28,7 +28,7 @@ func TestGetBestChoice(t *testing.T) {
 			"2": "2. Deny this action",
 		}
 		
-		result := GetBestChoice(choices, patterns, nil)
+		result := GetBestChoice(choices, patterns)
 		if result != "1" {
 			t.Errorf("Expected choice 1 (Add a new rule), got %q", result)
 		}
@@ -39,7 +39,7 @@ func TestGetBestChoice(t *testing.T) {
 			"3": "3. Some other option",
 		}
 		
-		result := GetBestChoice(choices, patterns, nil)
+		result := GetBestChoice(choices, patterns)
 		if result != "3" {
 			t.Errorf("Expected choice 3 (fallback), got %q", result)
 		}
@@ -48,7 +48,7 @@ func TestGetBestChoice(t *testing.T) {
 	t.Run("Ultimate fallback", func(t *testing.T) {
 		choices := map[string]string{}
 		
-		result := GetBestChoice(choices, patterns, nil)
+		result := GetBestChoice(choices, patterns)
 		if result != "1" {
 			t.Errorf("Expected choice 1 (ultimate fallback), got %q", result)
 		}
@@ -62,7 +62,7 @@ func TestGetBestChoiceFromState(t *testing.T) {
 	state.Prompt.CollectedChoices["1"] = "1. Allow this action"
 	state.Prompt.CollectedChoices["2"] = "2. Deny this action"
 	
-	result := GetBestChoiceFromState(state, patterns, nil)
+	result := GetBestChoiceFromState(state, patterns)
 	if result != "1" {
 		t.Errorf("Expected choice 1, got %q", result)
 	}

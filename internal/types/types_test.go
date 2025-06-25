@@ -1,7 +1,6 @@
 package types
 
 import (
-	"os"
 	"testing"
 )
 
@@ -141,7 +140,7 @@ type MockDialog struct {
 	LastChoices map[string]string
 }
 
-func (m *MockDialog) AskWithChoices(msg string, choices map[string]string, debugFile *os.File) string {
+func (m *MockDialog) AskWithChoices(msg string, choices map[string]string) string {
 	m.CallCount++
 	m.LastMsg = msg
 	m.LastChoices = make(map[string]string)
@@ -154,7 +153,7 @@ func (m *MockDialog) AskWithChoices(msg string, choices map[string]string, debug
 func TestDialogInterface(t *testing.T) {
 	mock := &MockDialog{ReturnValue: "1"}
 	
-	result := mock.AskWithChoices("Test message", map[string]string{"1": "Yes", "2": "No"}, nil)
+	result := mock.AskWithChoices("Test message", map[string]string{"1": "Yes", "2": "No"})
 	
 	if result != "1" {
 		t.Errorf("Expected '1', got %q", result)

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/takahirom/dialog-code/internal/choice"
+	"github.com/takahirom/dialog-code/internal/debug"
 	"github.com/takahirom/dialog-code/internal/types"
 )
 
@@ -59,26 +60,20 @@ func NewOSDialog(state *types.DialogState, patterns *types.RegexPatterns) *OSDia
 }
 
 // AskWithChoices shows dialog on macOS with collected choices
-func (d *OSDialog) AskWithChoices(msg string, choices map[string]string, debugFile *os.File) string {
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] askWithChoices called with msg: %q\n", msg)
-		fmt.Fprintf(debugFile, "[DEBUG] askWithChoices choices: %+v\n", choices)
-	}
+func (d *OSDialog) AskWithChoices(msg string, choices map[string]string) string {
+	debug.Printf("[DEBUG] askWithChoices called with msg: %q\n", msg)
+	debug.Printf("[DEBUG] askWithChoices choices: %+v\n", choices)
 	
 	d.State.Mutex.Lock()
 	defer d.State.Mutex.Unlock()
 	
 	// Only prevent if dialog is currently showing
 	if d.State.Showing {
-		if debugFile != nil {
-			fmt.Fprintf(debugFile, "[DEBUG] Dialog prevented: dialogShowing=%v\n", d.State.Showing)
-		}
+		debug.Printf("[DEBUG] Dialog prevented: dialogShowing=%v\n", d.State.Showing)
 		return "3" // Default to No
 	}
 	
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Starting dialog display\n")
-	}
+	debug.Printf("[DEBUG] Starting dialog display\n")
 	
 	cleanMsg := d.Patterns.StripAnsi(msg)
 	
@@ -86,9 +81,7 @@ func (d *OSDialog) AskWithChoices(msg string, choices map[string]string, debugFi
 	var buttons []string
 	var buttonToChoice = make(map[string]string)
 	
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Building buttons from %d choices\n", len(choices))
-	}
+	debug.Printf("[DEBUG] Building buttons from %d choices\n", len(choices))
 	
 	// Add choices in order (1, 2, 3...)
 	for i := 1; i <= 3; i++ {
@@ -107,16 +100,12 @@ func (d *OSDialog) AskWithChoices(msg string, choices map[string]string, debugFi
 			}
 			buttons = append(buttons, cleanChoice)
 			buttonToChoice[cleanChoice] = numStr
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "[DEBUG] Added button %s: %q -> %s\n", numStr, cleanChoice, numStr)
-			}
+			debug.Printf("[DEBUG] Added button %s: %q -> %s\n", numStr, cleanChoice, numStr)
 		}
 	}
 	
 	if len(buttons) == 0 {
-		if debugFile != nil {
-			fmt.Fprintf(debugFile, "[DEBUG] No buttons found, not showing dialog (waiting for choices)\n")
-		}
+		debug.Printf("[DEBUG] No buttons found, not showing dialog (waiting for choices)\n")
 		// Don't set dialogShowing or cooldown for empty dialogs
 		return "" // Return empty string to indicate "don't respond yet"
 	}
@@ -128,45 +117,33 @@ func (d *OSDialog) AskWithChoices(msg string, choices map[string]string, debugFi
 		d.State.LastTime = time.Now()
 		d.State.JustShown = true
 		d.State.Cooldown = time.Now()
-		if debugFile != nil {
-			fmt.Fprintf(debugFile, "[DEBUG] Dialog finished, cooldown activated\n")
-		}
+		debug.Printf("[DEBUG] Dialog finished, cooldown activated\n")
 	}()
 	
 	// Build AppleScript with dynamic buttons
 	buttonsStr := `{"` + strings.Join(buttons, `","`) + `"}`
 	script := `display dialog "` + strings.ReplaceAll(cleanMsg, `"`, `\"`) + `" with title "Claude Permission" buttons ` + buttonsStr + ` default button "` + buttons[0] + `"`
 	
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] Executing AppleScript: %s\n", script)
-	}
+	debug.Printf("[DEBUG] Executing AppleScript: %s\n", script)
 	
 	out, err := exec.Command("osascript", "-e", script).CombinedOutput()
 	if err != nil {
-		if debugFile != nil {
-			fmt.Fprintf(debugFile, "[DEBUG] AppleScript error: %v\n", err)
-		}
+		debug.Printf("[DEBUG] AppleScript error: %v\n", err)
 		return "3" // Default to No on error
 	}
 	
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] AppleScript output: %q\n", string(out))
-	}
+	debug.Printf("[DEBUG] AppleScript output: %q\n", string(out))
 	
 	// Parse which button was clicked
 	outStr := string(out)
 	for button, choiceNum := range buttonToChoice {
 		if strings.Contains(outStr, "button returned:"+button) {
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "[DEBUG] Button %q clicked, returning %s\n", button, choiceNum)
-			}
+			debug.Printf("[DEBUG] Button %q clicked, returning %s\n", button, choiceNum)
 			return choiceNum
 		}
 	}
 	
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] No button match found, returning default\n")
-	}
+	debug.Printf("[DEBUG] No button match found, returning default\n")
 	return "3" // Default to No
 }
 
@@ -209,25 +186,22 @@ func AskWithChoicesContextAndReason(msg string, choices map[string]string, conte
 
 // askWithOptions is the unified function that handles all dialog variations
 func askWithOptions(opts DialogOptions) string {
-	debugFile, _ := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	defer debugFile.Close()
-	
-	fmt.Fprintf(debugFile, "[DEBUG] askWithOptions called with msg: %q\n", opts.Message)
+	debug.Printf("[DEBUG] askWithOptions called with msg: %q\n", opts.Message)
 	if opts.TriggerReason != "" {
-		fmt.Fprintf(debugFile, "[DEBUG] triggerReason: %q, triggerLine: %q\n", opts.TriggerReason, opts.TriggerLine)
+		debug.Printf("[DEBUG] triggerReason: %q, triggerLine: %q\n", opts.TriggerReason, opts.TriggerLine)
 	}
-	fmt.Fprintf(debugFile, "[DEBUG] choices: %+v\n", opts.Choices)
-	fmt.Fprintf(debugFile, "[DEBUG] context: %+v\n", opts.Context)
+	debug.Printf("[DEBUG] choices: %+v\n", opts.Choices)
+	debug.Printf("[DEBUG] context: %+v\n", opts.Context)
 	
 	dialogMutex.Lock()
 	defer dialogMutex.Unlock()
 	
 	if dialogShowing {
-		fmt.Fprintf(debugFile, "[DEBUG] Dialog prevented: dialogShowing=%v\n", dialogShowing)
+		debug.Printf("[DEBUG] Dialog prevented: dialogShowing=%v\n", dialogShowing)
 		return "3" // Default to No
 	}
 	
-	fmt.Fprintf(debugFile, "[DEBUG] Starting dialog display\n")
+	debug.Printf("[DEBUG] Starting dialog display\n")
 	
 	// Create patterns inline
 	ansiEscape := regexp.MustCompile(`\x1b\[[0-9;?]*[mKHJhlABCDEFGPST]`)
@@ -245,7 +219,7 @@ func askWithOptions(opts DialogOptions) string {
 	var buttons []string
 	var buttonToChoice = make(map[string]string)
 	
-	fmt.Fprintf(debugFile, "[DEBUG] Building buttons from %d choices\n", len(opts.Choices))
+	debug.Printf("[DEBUG] Building buttons from %d choices\n", len(opts.Choices))
 	
 	// Add choices in order (1, 2, 3...)
 	for i := 1; i <= 3; i++ {
@@ -254,12 +228,12 @@ func askWithOptions(opts DialogOptions) string {
 			cleanChoice := cleanChoiceText(choice)
 			buttons = append(buttons, cleanChoice)
 			buttonToChoice[cleanChoice] = numStr
-			fmt.Fprintf(debugFile, "[DEBUG] Added button %s: %q -> %s\n", numStr, cleanChoice, numStr)
+			debug.Printf("[DEBUG] Added button %s: %q -> %s\n", numStr, cleanChoice, numStr)
 		}
 	}
 	
 	if len(buttons) == 0 {
-		fmt.Fprintf(debugFile, "[DEBUG] No buttons found, not showing dialog (waiting for choices)\n")
+		debug.Printf("[DEBUG] No buttons found, not showing dialog (waiting for choices)\n")
 		return ""
 	}
 	
@@ -270,11 +244,11 @@ func askWithOptions(opts DialogOptions) string {
 		lastDialogTime = time.Now()
 		dialogJustShown = true
 		dialogCooldown = time.Now()
-		fmt.Fprintf(debugFile, "[DEBUG] Dialog finished, cooldown activated\n")
+		debug.Printf("[DEBUG] Dialog finished, cooldown activated\n")
 	}()
 	
 	// Execute AppleScript dialog
-	return executeAppleScriptDialog(cleanMsg, buttons, buttonToChoice, debugFile)
+	return executeAppleScriptDialog(cleanMsg, buttons, buttonToChoice)
 }
 
 // cleanChoiceText removes formatting from choice text
@@ -292,7 +266,7 @@ func cleanChoiceText(choice string) string {
 }
 
 // executeAppleScriptDialog executes the AppleScript and returns the choice
-func executeAppleScriptDialog(cleanMsg string, buttons []string, buttonToChoice map[string]string, debugFile *os.File) string {
+func executeAppleScriptDialog(cleanMsg string, buttons []string, buttonToChoice map[string]string) string {
 	// Clean the message to avoid AppleScript parsing issues
 	cleanMsg = sanitizeMessageForAppleScript(cleanMsg)
 	
@@ -308,26 +282,26 @@ func executeAppleScriptDialog(cleanMsg string, buttons []string, buttonToChoice 
 	buttonsStr := `{"` + strings.Join(cleanButtons, `","`) + `"}`
 	script := `display dialog "` + cleanMsg + `" with title "Claude Permission" buttons ` + buttonsStr + ` default button "` + cleanButtons[0] + `"`
 	
-	fmt.Fprintf(debugFile, "[DEBUG] Executing AppleScript: %s\n", script)
+	debug.Printf("[DEBUG] Executing AppleScript: %s\n", script)
 	
 	out, err := exec.Command("osascript", "-e", script).CombinedOutput()
 	if err != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] AppleScript error: %v, output: %s\n", err, string(out))
+		debug.Printf("[DEBUG] AppleScript error: %v, output: %s\n", err, string(out))
 		return "3" // Default to No on error
 	}
 	
-	fmt.Fprintf(debugFile, "[DEBUG] AppleScript output: %q\n", string(out))
+	debug.Printf("[DEBUG] AppleScript output: %q\n", string(out))
 	
 	// Parse which button was clicked
 	outStr := string(out)
 	for button, choiceNum := range cleanButtonToChoice {
 		if strings.Contains(outStr, "button returned:"+button) {
-			fmt.Fprintf(debugFile, "[DEBUG] Button %q clicked, returning %s\n", button, choiceNum)
+			debug.Printf("[DEBUG] Button %q clicked, returning %s\n", button, choiceNum)
 			return choiceNum
 		}
 	}
 	
-	fmt.Fprintf(debugFile, "[DEBUG] No button match found, returning default\n")
+	debug.Printf("[DEBUG] No button match found, returning default\n")
 	return "3" // Default to No
 }
 

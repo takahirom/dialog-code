@@ -2,20 +2,18 @@ package choice
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/takahirom/dialog-code/internal/debug"
 	"github.com/takahirom/dialog-code/internal/types"
 )
 
 // GetBestChoice determines the best choice number based on collected choices
-func GetBestChoice(choices map[string]string, regexPatterns *types.RegexPatterns, debugFile *os.File) string {
+func GetBestChoice(choices map[string]string, regexPatterns *types.RegexPatterns) string {
 	// For Claude permissions: Priority is "Allow" > first available choice
 	for num, text := range choices {
 		if regexPatterns.ChoiceYes.MatchString(text) {
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "[DEBUG] Found 'Allow/Yes' at choice %s: %s\n", num, text)
-			}
+			debug.Printf("[DEBUG] Found 'Allow/Yes' at choice %s: %s\n", num, text)
 			return num
 		}
 	}
@@ -23,9 +21,7 @@ func GetBestChoice(choices map[string]string, regexPatterns *types.RegexPatterns
 	// Look for "Add a new rule" as second choice (often choice 1)
 	for num, text := range choices {
 		if strings.Contains(text, "Add a new rule") {
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "[DEBUG] Found 'Add a new rule' at choice %s: %s\n", num, text)
-			}
+			debug.Printf("[DEBUG] Found 'Add a new rule' at choice %s: %s\n", num, text)
 			return num
 		}
 	}
@@ -34,23 +30,19 @@ func GetBestChoice(choices map[string]string, regexPatterns *types.RegexPatterns
 	for num := 1; num <= 10; num++ {
 		numStr := fmt.Sprintf("%d", num)
 		if _, exists := choices[numStr]; exists {
-			if debugFile != nil {
-				fmt.Fprintf(debugFile, "[DEBUG] Fallback to first available choice %s\n", numStr)
-			}
+			debug.Printf("[DEBUG] Fallback to first available choice %s\n", numStr)
 			return numStr
 		}
 	}
 	
 	// Ultimate fallback
-	if debugFile != nil {
-		fmt.Fprintf(debugFile, "[DEBUG] No choices found, defaulting to 1\n")
-	}
+	debug.Printf("[DEBUG] No choices found, defaulting to 1\n")
 	return "1"
 }
 
 // GetBestChoiceFromState determines the best choice number based on app state
-func GetBestChoiceFromState(state *types.AppState, regexPatterns *types.RegexPatterns, debugFile *os.File) string {
-	return GetBestChoice(state.Prompt.CollectedChoices, regexPatterns, debugFile)
+func GetBestChoiceFromState(state *types.AppState, regexPatterns *types.RegexPatterns) string {
+	return GetBestChoice(state.Prompt.CollectedChoices, regexPatterns)
 }
 
 // GetContextualMessage builds a more informative dialog message with context

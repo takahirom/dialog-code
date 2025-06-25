@@ -227,5 +227,5 @@ func (state *AppState) AddChoice(choiceLine string, regexPatterns *RegexPatterns
 
 // DialogInterface defines the interface for showing permission dialogs
 type DialogInterface interface {
-	AskWithChoices(msg string, choices map[string]string, debugFile *os.File) string
+	AskWithChoices(msg string, choices map[string]string) string
 }
