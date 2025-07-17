@@ -34,6 +34,7 @@ const (
 
 var (
 	autoApprove = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
+	autoReject  = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
 	stripColors = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
 	debugFlag   = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
 )
@@ -62,9 +63,7 @@ func (p *PermissionHandler) processLine(line string) {
 	cleanLine := p.patterns.StripAnsi(line)
 	
 	// Log interesting lines
-	if len(strings.TrimSpace(cleanLine)) > 0 && !strings.HasPrefix(cleanLine, "[") {
-		debugf("[DEBUG] Line: %q\n", cleanLine)
-	}
+	// Removed Line: logging to reduce log noise
 	if strings.Contains(cleanLine, "permission") || strings.Contains(cleanLine, "approval") || 
 	   strings.Contains(cleanLine, "requires") || strings.Contains(cleanLine, "Write(") || 
 	   strings.Contains(cleanLine, "rejected") {
@@ -121,6 +120,7 @@ func (p *PermissionHandler) processLine(line string) {
 	
 	// Process choices if in prompt
 	if p.appState.Prompt.Started {
+		debugf("[DEBUG] Processing choice (prompt started): %q\n", cleanLine)
 		p.processChoice(line, cleanLine)
 	}
 }
@@ -151,9 +151,11 @@ func (p *PermissionHandler) processChoice(line, cleanLine string) {
 	// Check if this is the end of choices
 	if strings.TrimSpace(cleanLine) == "" || strings.Contains(cleanLine, "╰") || strings.Contains(cleanLine, "Your choice:") {
 		debugf("[DEBUG] End of choices detected, making decision\n")
+		debugf("[DEBUG] Collected choices: %v\n", p.appState.Prompt.CollectedChoices)
 		p.appState.Prompt.Started = false
 		
 		bestChoice := choice.GetBestChoiceFromState(p.appState, p.patterns)
+		debugf("[DEBUG] Best choice: %s, autoReject: %v\n", bestChoice, *autoReject)
 		p.handleUserChoice(bestChoice)
 	}
 }
@@ -161,6 +163,8 @@ func (p *PermissionHandler) processChoice(line, cleanLine string) {
 func (p *PermissionHandler) handleUserChoice(bestChoice string) {
 	if *autoApprove {
 		p.sendAutoApprove(bestChoice)
+	} else if *autoReject {
+		p.sendAutoReject()
 	} else {
 		p.showDialog(bestChoice)
 	}
@@ -173,6 +177,44 @@ func (p *PermissionHandler) sendAutoApprove(choice string) {
 		n, err := p.ptmx.WriteString(choice)
 		debugf("[DEBUG] Auto-approve WriteString(%q) returned n=%d, err=%v\n", choice, n, err)
 		p.ptmx.Sync()
+	}()
+}
+
+func (p *PermissionHandler) sendAutoReject() {
+	// Find the highest numbered choice (typically 2 or 3 for reject)
+	maxChoice := "2"
+	for num := 3; num >= 2; num-- {
+		numStr := fmt.Sprintf("%d", num)
+		if _, exists := p.appState.Prompt.CollectedChoices[numStr]; exists {
+			maxChoice = numStr
+			break
+		}
+	}
+	
+	debugf("[DEBUG] Auto-reject mode, will send %s followed by rejection message\n", maxChoice)
+	go func() {
+		time.Sleep(AutoApproveDelayMs * time.Millisecond)
+		// Send the max choice number without newline (like dialog mode)
+		debugf("[DEBUG] About to send choice: %s\n", maxChoice)
+		n, err := p.ptmx.WriteString(maxChoice)
+		debugf("[DEBUG] Auto-reject WriteString(%q) returned n=%d, err=%v\n", maxChoice, n, err)
+		p.ptmx.Sync()
+		
+		// Wait for the choice to be processed
+		time.Sleep(200 * time.Millisecond)
+		
+		// Now send the rejection message
+		rejectMsg := "Please try other command or tools"
+		n, err = p.ptmx.WriteString(rejectMsg)
+		debugf("[DEBUG] Auto-reject message WriteString(%q) returned n=%d, err=%v\n", rejectMsg, n, err)
+		p.ptmx.Sync()
+		
+		// Send carriage return separately
+		time.Sleep(50 * time.Millisecond)
+		n, err = p.ptmx.WriteString("\r")
+		debugf("[DEBUG] Auto-reject CR WriteString(%q) returned n=%d, err=%v\n", "\r", n, err)
+		p.ptmx.Sync()
+		debugf("[DEBUG] Auto-reject complete\n")
 	}()
 }
 
@@ -210,6 +252,8 @@ func main() {
 		arg := os.Args[i]
 		if arg == "-auto-approve" || arg == "--auto-approve" {
 			*autoApprove = true
+		} else if arg == "-auto-reject" || arg == "--auto-reject" {
+			*autoReject = true
 		} else if arg == "-strip-colors" || arg == "--strip-colors" {
 			*stripColors = true
 		} else if arg == "-debug" || arg == "--debug" {
@@ -299,8 +343,8 @@ func main() {
 		}()
 	} else {
 		// For interactive input, use direct copy
-		go func() { 
-			_, _ = io.Copy(ptmx, os.Stdin) 
+		go func() {
+			_, _ = io.Copy(ptmx, os.Stdin)
 		}()
 	}
 	
