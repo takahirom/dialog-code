@@ -149,10 +149,13 @@ func (p *PermissionHandler) processChoice(line, cleanLine string) {
 	p.appState.AddChoice(line, p.patterns)
 	
 	// Check if this is the end of choices
-	if strings.TrimSpace(cleanLine) == "" || strings.Contains(cleanLine, "╰") || strings.Contains(cleanLine, "Your choice:") {
-		debugf("[DEBUG] End of choices detected, making decision\n")
+	if strings.Contains(cleanLine, "╰") {
+		debugf("[DEBUG] End of choices detected (found ╰), making decision\n")
 		debugf("[DEBUG] Collected choices: %v\n", p.appState.Prompt.CollectedChoices)
 		p.appState.Prompt.Started = false
+		
+		// Add a small delay to ensure the prompt is fully rendered
+		time.Sleep(100 * time.Millisecond)
 		
 		bestChoice := choice.GetBestChoiceFromState(p.appState, p.patterns)
 		debugf("[DEBUG] Best choice: %s, autoReject: %v\n", bestChoice, *autoReject)
@@ -201,7 +204,7 @@ func (p *PermissionHandler) sendAutoReject() {
 		p.ptmx.Sync()
 		
 		// Wait for the choice to be processed
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		
 		// Now send the rejection message
 		rejectMsg := "Please try other command or tools"
