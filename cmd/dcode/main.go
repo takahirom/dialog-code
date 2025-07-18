@@ -207,7 +207,7 @@ func (p *PermissionHandler) sendAutoReject() {
 		time.Sleep(500 * time.Millisecond)
 		
 		// Now send the rejection message
-		rejectMsg := "Please try other command or tools"
+		rejectMsg := "The command was automatically rejected. Please try a different command. This may occur due to pipes or redirections."
 		n, err = p.ptmx.WriteString(rejectMsg)
 		debugf("[DEBUG] Auto-reject message WriteString(%q) returned n=%d, err=%v\n", rejectMsg, n, err)
 		p.ptmx.Sync()
