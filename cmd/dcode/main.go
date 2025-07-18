@@ -61,20 +61,20 @@ func NewPermissionHandler(ptmx *os.File) *PermissionHandler {
 
 func (p *PermissionHandler) processLine(line string) {
 	cleanLine := p.patterns.StripAnsi(line)
-	
+
 	// Log interesting lines
 	// Removed Line: logging to reduce log noise
-	if strings.Contains(cleanLine, "permission") || strings.Contains(cleanLine, "approval") || 
-	   strings.Contains(cleanLine, "requires") || strings.Contains(cleanLine, "Write(") || 
-	   strings.Contains(cleanLine, "rejected") {
+	if strings.Contains(cleanLine, "permission") || strings.Contains(cleanLine, "approval") ||
+		strings.Contains(cleanLine, "requires") || strings.Contains(cleanLine, "Write(") ||
+		strings.Contains(cleanLine, "rejected") {
 		debugf("[DEBUG] Potential permission line: %q\n", cleanLine)
 	}
-	
+
 	// Log permission prompts for debugging
 	if strings.Contains(cleanLine, "Do you want") {
 		debugf("[DEBUG] Permission prompt detected: %q\n", cleanLine)
 	}
-	
+
 	// Collect context lines
 	if !p.appState.Prompt.Started && len(strings.TrimSpace(cleanLine)) > 0 && !strings.HasPrefix(cleanLine, "[DEBUG]") {
 		p.contextLines = append(p.contextLines, cleanLine)
@@ -82,12 +82,12 @@ func (p *PermissionHandler) processLine(line string) {
 			p.contextLines = p.contextLines[1:]
 		}
 	}
-	
+
 	// Skip certain types of lines
 	if p.shouldSkipLine(cleanLine) {
 		return
 	}
-	
+
 	// Check for permission prompt start
 	if p.patterns.Permit.MatchString(line) {
 		// Create a context-aware identifier for this prompt
@@ -101,10 +101,10 @@ func (p *PermissionHandler) processLine(line string) {
 			}
 		}
 		contextIdentifier += p.patterns.StripAnsi(line)
-		
+
 		// Add timestamp to make each prompt unique
 		contextIdentifier += "|" + fmt.Sprintf("%d", time.Now().UnixNano())
-		
+
 		if contextIdentifier != p.appState.Prompt.LastLine {
 			if p.shouldProcessPrompt(line) {
 				debugf("[DEBUG] Detected permission prompt: %q\n", p.patterns.StripAnsi(line))
@@ -117,7 +117,7 @@ func (p *PermissionHandler) processLine(line string) {
 		}
 		return
 	}
-	
+
 	// Process choices if in prompt
 	if p.appState.Prompt.Started {
 		debugf("[DEBUG] Processing choice (prompt started): %q\n", cleanLine)
@@ -139,24 +139,24 @@ func (p *PermissionHandler) shouldProcessPrompt(line string) bool {
 		debugf("[DEBUG] Skipping prompt due to processing rules: %q\n", p.patterns.StripAnsi(line))
 		return false
 	}
-	
+
 	return true
 }
 
 func (p *PermissionHandler) processChoice(line, cleanLine string) {
 	debugf("[DEBUG] Checking line for choices: %q\n", cleanLine)
-	
+
 	p.appState.AddChoice(line, p.patterns)
-	
+
 	// Check if this is the end of choices
 	if strings.Contains(cleanLine, "╰") {
 		debugf("[DEBUG] End of choices detected (found ╰), making decision\n")
 		debugf("[DEBUG] Collected choices: %v\n", p.appState.Prompt.CollectedChoices)
 		p.appState.Prompt.Started = false
-		
-		// Add a small delay to ensure the prompt is fully rendered
-		time.Sleep(100 * time.Millisecond)
-		
+
+		// Add a longer delay to ensure the prompt is fully rendered and processed
+		time.Sleep(300 * time.Millisecond)
+
 		bestChoice := choice.GetBestChoiceFromState(p.appState, p.patterns)
 		debugf("[DEBUG] Best choice: %s, autoReject: %v\n", bestChoice, *autoReject)
 		p.handleUserChoice(bestChoice)
@@ -193,7 +193,7 @@ func (p *PermissionHandler) sendAutoReject() {
 			break
 		}
 	}
-	
+
 	debugf("[DEBUG] Auto-reject mode, will send %s followed by rejection message\n", maxChoice)
 	go func() {
 		time.Sleep(AutoApproveDelayMs * time.Millisecond)
@@ -202,16 +202,16 @@ func (p *PermissionHandler) sendAutoReject() {
 		n, err := p.ptmx.WriteString(maxChoice)
 		debugf("[DEBUG] Auto-reject WriteString(%q) returned n=%d, err=%v\n", maxChoice, n, err)
 		p.ptmx.Sync()
-		
+
 		// Wait for the choice to be processed
 		time.Sleep(500 * time.Millisecond)
-		
+
 		// Now send the rejection message
 		rejectMsg := "The command was automatically rejected. Please try a different command. This may occur due to pipes or redirections."
 		n, err = p.ptmx.WriteString(rejectMsg)
 		debugf("[DEBUG] Auto-reject message WriteString(%q) returned n=%d, err=%v\n", rejectMsg, n, err)
 		p.ptmx.Sync()
-		
+
 		// Send carriage return separately
 		time.Sleep(50 * time.Millisecond)
 		n, err = p.ptmx.WriteString("\r")
@@ -224,23 +224,23 @@ func (p *PermissionHandler) sendAutoReject() {
 func (p *PermissionHandler) showDialog(bestChoice string) {
 	go func() {
 		userChoice := dialog.AskWithChoicesContextAndReason(p.appState.Prompt.LastLine, p.appState.Prompt.CollectedChoices, p.contextLines, p.appState.Prompt.TriggerReason, p.appState.Prompt.TriggerLine)
-		
+
 		debugf("[DEBUG] User selected choice %s\n", userChoice)
-		
+
 		if userChoice != "" {
 			n, err := p.ptmx.WriteString(userChoice)
 			debugf("[DEBUG] User choice WriteString(%q) returned n=%d, err=%v\n", userChoice, n, err)
-			
+
 			// Set cooldown in deduplication manager
 			p.appState.Deduplicator.SetDialogCooldown("main_dialog")
-			
+
 			go func() {
 				time.Sleep(DialogResetDelayMs * time.Millisecond)
 				p.appState.Prompt.JustShown = false
 				p.appState.Deduplicator.ClearCooldown("main_dialog")
 				debugf("[DEBUG] Dialog cooldown reset\n")
 			}()
-			
+
 			p.ptmx.Sync()
 		} else {
 			debugf("[DEBUG] No choice to send (dialog not shown yet)\n")
@@ -265,16 +265,16 @@ func main() {
 			args = append(args, arg)
 		}
 	}
-	
+
 	// Check if stdin is a pipe/file vs interactive terminal
 	stat, _ := os.Stdin.Stat()
 	isPipe := (stat.Mode() & os.ModeCharDevice) == 0
-	
+
 	// Enable debug logging if debug flag is set
 	if *debugFlag {
 		debug.Enable()
 	}
-	
+
 	cmd := exec.Command("claude", args...)
 
 	// Allocate PTY for Claude
@@ -291,7 +291,7 @@ func main() {
 			pty.Setsize(ptmx, size)
 			debugf("[DEBUG] Set initial terminal size: %dx%d\n", size.Cols, size.Rows)
 		}
-		
+
 		// Handle terminal resize
 		sigwinch := make(chan os.Signal, 1)
 		signal.Notify(sigwinch, syscall.SIGWINCH)
@@ -305,13 +305,13 @@ func main() {
 		}()
 	}
 	debugf("[DEBUG] Main: isPipe=%v, stat.Mode()=%v\n", isPipe, stat.Mode())
-	
+
 	var oldState *term.State
 	if !isPipe {
 		// Set terminal to raw mode only for interactive input
 		oldState, _ = term.MakeRaw(int(os.Stdin.Fd()))
 	}
-	
+
 	// Restore terminal state only if it was set
 	defer func() {
 		if oldState != nil {
@@ -328,7 +328,7 @@ func main() {
 			for scanner.Scan() {
 				line := scanner.Text()
 				debugf("[DEBUG] Processing line: %q\n", line)
-				
+
 				// Send the text character by character
 				for _, char := range line {
 					ptmx.WriteString(string(char))
@@ -350,11 +350,11 @@ func main() {
 			_, _ = io.Copy(ptmx, os.Stdin)
 		}()
 	}
-	
+
 	// Initialize dialog globals
 	dialog.SetPtmxGlobal(ptmx)
 	dialog.InitGlobals()
-	
+
 	// Create display writer
 	var displayWriter io.Writer
 	if *stripColors {
@@ -362,22 +362,22 @@ func main() {
 	} else {
 		displayWriter = os.Stdout
 	}
-	
+
 	// Create permission handler
 	permHandler := NewPermissionHandler(ptmx)
-	
+
 	// Use TeeReader to handle both output and permission detection in single read
 	var lineBuffer []byte
-	
+
 	// Create a pipe to process data
 	pipeReader, pipeWriter := io.Pipe()
-	
+
 	// Start output handling from pipe
 	go func() {
 		defer pipeReader.Close()
 		_, _ = io.Copy(displayWriter, pipeReader)
 	}()
-	
+
 	// Single read loop that handles both output and permission detection
 	buffer := make([]byte, 1024)
 	for {
@@ -389,10 +389,10 @@ func main() {
 			debugf("[ERROR] Reading from PTY: %v\n", err)
 			break
 		}
-		
+
 		// Write to pipe for output
 		pipeWriter.Write(buffer[:n])
-		
+
 		// Process data for permission detection
 		for i := 0; i < n; i++ {
 			if buffer[i] == '\n' {
@@ -404,6 +404,6 @@ func main() {
 			}
 		}
 	}
-	
+
 	pipeWriter.Close()
 }
