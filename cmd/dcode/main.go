@@ -196,7 +196,7 @@ func (p *PermissionHandler) sendAutoReject() {
 
 	debugf("[DEBUG] Auto-reject mode, will send %s followed by rejection message\n", maxChoice)
 	go func() {
-		time.Sleep(AutoApproveDelayMs * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 		// Send the max choice number without newline (like dialog mode)
 		debugf("[DEBUG] About to send choice: %s\n", maxChoice)
 		n, err := p.ptmx.WriteString(maxChoice)
@@ -213,7 +213,7 @@ func (p *PermissionHandler) sendAutoReject() {
 		p.ptmx.Sync()
 
 		// Send carriage return separately
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		n, err = p.ptmx.WriteString("\r")
 		debugf("[DEBUG] Auto-reject CR WriteString(%q) returned n=%d, err=%v\n", "\r", n, err)
 		p.ptmx.Sync()
