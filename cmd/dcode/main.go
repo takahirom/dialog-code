@@ -213,7 +213,7 @@ func (p *PermissionHandler) sendAutoReject() {
 		p.ptmx.Sync()
 
 		// Send carriage return separately
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 		n, err = p.ptmx.WriteString("\r")
 		debugf("[DEBUG] Auto-reject CR WriteString(%q) returned n=%d, err=%v\n", "\r", n, err)
 		p.ptmx.Sync()
