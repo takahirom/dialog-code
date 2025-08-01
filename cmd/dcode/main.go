@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -33,10 +34,11 @@ const (
 )
 
 var (
-	autoApprove = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
-	autoReject  = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
-	stripColors = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
-	debugFlag   = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
+	autoApprove     = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
+	autoReject      = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
+	autoRejectWait  = flag.Int("auto-reject-wait", 0, "Auto-reject with N seconds wait for user intervention (0 = disabled)")
+	stripColors     = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
+	debugFlag       = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
 )
 
 func debugf(format string, args ...interface{}) {
@@ -168,6 +170,8 @@ func (p *PermissionHandler) handleUserChoice(bestChoice string) {
 		p.sendAutoApprove(bestChoice)
 	} else if *autoReject {
 		p.sendAutoReject()
+	} else if *autoRejectWait > 0 {
+		p.sendAutoRejectWithWait(bestChoice)
 	} else {
 		p.showDialog(bestChoice)
 	}
@@ -213,11 +217,74 @@ func (p *PermissionHandler) sendAutoReject() {
 		p.ptmx.Sync()
 
 		// Send carriage return separately
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(400 * time.Millisecond)
 		n, err = p.ptmx.WriteString("\r")
 		debugf("[DEBUG] Auto-reject CR WriteString(%q) returned n=%d, err=%v\n", "\r", n, err)
 		p.ptmx.Sync()
 		debugf("[DEBUG] Auto-reject complete\n")
+	}()
+}
+
+func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
+	// Find the highest numbered choice (typically 2 or 3 for reject)
+	maxChoice := "2"
+	for num := 3; num >= 2; num-- {
+		numStr := fmt.Sprintf("%d", num)
+		if _, exists := p.appState.Prompt.CollectedChoices[numStr]; exists {
+			maxChoice = numStr
+			break
+		}
+	}
+
+	debugf("[DEBUG] Auto-reject-wait mode (%d seconds), will wait before sending %s\n", *autoRejectWait, maxChoice)
+	go func() {
+		// Show a wait message to indicate the wait period
+		waitMsg := fmt.Sprintf("Auto-rejecting in %d seconds... (press any key to intervene)", *autoRejectWait)
+		p.ptmx.WriteString(waitMsg + "\r\n")
+		p.ptmx.Sync()
+
+		// Wait for the specified number of seconds
+		waitDuration := time.Duration(*autoRejectWait) * time.Second
+		debugf("[DEBUG] Waiting %v before auto-reject\n", waitDuration)
+		
+		// Create a channel to handle user input during wait
+		done := make(chan bool, 1)
+		
+		// Start a timer for the wait period
+		timer := time.NewTimer(waitDuration)
+		
+		select {
+		case <-timer.C:
+			// Time expired, proceed with auto-reject
+			debugf("[DEBUG] Wait period expired, proceeding with auto-reject\n")
+			
+			// Send the max choice number without newline (like dialog mode)
+			debugf("[DEBUG] About to send choice: %s\n", maxChoice)
+			n, err := p.ptmx.WriteString(maxChoice)
+			debugf("[DEBUG] Auto-reject-wait WriteString(%q) returned n=%d, err=%v\n", maxChoice, n, err)
+			p.ptmx.Sync()
+
+			// Wait for the choice to be processed
+			time.Sleep(500 * time.Millisecond)
+
+			// Now send the rejection message
+			rejectMsg := "The command was automatically rejected after wait period. Please try a different command."
+			n, err = p.ptmx.WriteString(rejectMsg)
+			debugf("[DEBUG] Auto-reject-wait message WriteString(%q) returned n=%d, err=%v\n", rejectMsg, n, err)
+			p.ptmx.Sync()
+
+			// Send carriage return separately
+			time.Sleep(400 * time.Millisecond)
+			n, err = p.ptmx.WriteString("\r")
+			debugf("[DEBUG] Auto-reject-wait CR WriteString(%q) returned n=%d, err=%v\n", "\r", n, err)
+			p.ptmx.Sync()
+			debugf("[DEBUG] Auto-reject-wait complete\n")
+			
+		case <-done:
+			// User intervened, stop the timer
+			timer.Stop()
+			debugf("[DEBUG] User intervened during wait period\n")
+		}
 	}()
 }
 
@@ -257,6 +324,17 @@ func main() {
 			*autoApprove = true
 		} else if arg == "-auto-reject" || arg == "--auto-reject" {
 			*autoReject = true
+		} else if strings.HasPrefix(arg, "-auto-reject-wait=") || strings.HasPrefix(arg, "--auto-reject-wait=") {
+			// Parse --auto-reject-wait=N format
+			parts := strings.SplitN(arg, "=", 2)
+			if len(parts) == 2 {
+				if waitTime, err := strconv.Atoi(parts[1]); err == nil && waitTime >= 0 {
+					*autoRejectWait = waitTime
+				} else {
+					fmt.Fprintf(os.Stderr, "Invalid auto-reject-wait value: %s\n", parts[1])
+					os.Exit(1)
+				}
+			}
 		} else if arg == "-strip-colors" || arg == "--strip-colors" {
 			*stripColors = true
 		} else if arg == "-debug" || arg == "--debug" {
