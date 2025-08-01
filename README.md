@@ -46,7 +46,6 @@ dcode --auto-reject-wait=10  # Wait 10 seconds for user input
 ```
 
 **Features**:
-- Displays countdown message: "Auto-rejecting in N seconds... (press any key to intervene)"
 - If user presses any choice key (1, 2, 3) or Enter during wait period, cancels auto-reject
 - If no user input is detected, automatically rejects after specified time
 - Provides safety window for user intervention while ensuring eventual rejection
