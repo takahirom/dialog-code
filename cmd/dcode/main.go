@@ -46,10 +46,11 @@ func debugf(format string, args ...interface{}) {
 }
 
 type PermissionHandler struct {
-	ptmx         *os.File
-	appState     *types.AppState
-	patterns     *types.RegexPatterns
-	contextLines []string
+	ptmx            *os.File
+	appState        *types.AppState
+	patterns        *types.RegexPatterns
+	contextLines    []string
+	waitingForInput bool
 }
 
 func NewPermissionHandler(ptmx *os.File) *PermissionHandler {
@@ -242,21 +243,25 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 		waitMsg := fmt.Sprintf("Auto-rejecting in %d seconds... (press any key to intervene)", *autoRejectWait)
 		p.ptmx.WriteString(waitMsg + "\r\n")
 		p.ptmx.Sync()
+		
+		// Wait a moment for the message to be displayed before starting to monitor input
+		time.Sleep(500 * time.Millisecond)
+		
+		// Set flag to indicate we're waiting for input (after initial output settles)
+		p.waitingForInput = true
 
 		// Wait for the specified number of seconds
 		waitDuration := time.Duration(*autoRejectWait) * time.Second
 		debugf("[DEBUG] Waiting %v before auto-reject\n", waitDuration)
 		
-		// Create a channel to handle user input during wait
-		done := make(chan bool, 1)
-		
 		// Start a timer for the wait period
 		timer := time.NewTimer(waitDuration)
+		<-timer.C
 		
-		select {
-		case <-timer.C:
-			// Time expired, proceed with auto-reject
-			debugf("[DEBUG] Wait period expired, proceeding with auto-reject\n")
+		// Check if user intervened during wait period
+		if p.waitingForInput {
+			// No user intervention, proceed with auto-reject
+			debugf("[DEBUG] Wait period expired, no user intervention detected, proceeding with auto-reject\n")
 			
 			// Send the max choice number without newline (like dialog mode)
 			debugf("[DEBUG] About to send choice: %s\n", maxChoice)
@@ -279,12 +284,13 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 			debugf("[DEBUG] Auto-reject-wait CR WriteString(%q) returned n=%d, err=%v\n", "\r", n, err)
 			p.ptmx.Sync()
 			debugf("[DEBUG] Auto-reject-wait complete\n")
-			
-		case <-done:
-			// User intervened, stop the timer
-			timer.Stop()
-			debugf("[DEBUG] User intervened during wait period\n")
+		} else {
+			// User intervened during wait period, cancel auto-reject
+			debugf("[DEBUG] User intervened during wait period, auto-reject cancelled\n")
 		}
+		
+		// Reset the flag
+		p.waitingForInput = false
 	}()
 }
 
@@ -470,6 +476,22 @@ func main() {
 
 		// Write to pipe for output
 		pipeWriter.Write(buffer[:n])
+
+		// Check for user input during wait period by monitoring PTY output changes
+		if permHandler.waitingForInput && n > 0 {
+			// Look for patterns that indicate actual user choice input
+			outputStr := string(buffer[:n])
+			
+			// Detect specific user input patterns (choice numbers, enter key)
+			if strings.Contains(outputStr, "1") ||     // Choice 1
+				strings.Contains(outputStr, "2") ||     // Choice 2
+				strings.Contains(outputStr, "3") ||     // Choice 3
+				strings.Contains(outputStr, "\n") ||    // Enter key
+				strings.Contains(outputStr, "\r\n") {   // Enter key (CRLF)
+				debugf("[DEBUG] User choice input detected in PTY output during wait period: %q\n", outputStr)
+				permHandler.waitingForInput = false
+			}
+		}
 
 		// Process data for permission detection
 		for i := 0; i < n; i++ {
