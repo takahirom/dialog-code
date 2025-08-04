@@ -212,7 +212,7 @@ func (p *PermissionHandler) sendAutoReject() {
 		time.Sleep(500 * time.Millisecond)
 
 		// Now send the rejection message
-		rejectMsg := "The command was automatically rejected. Please try a different command. This may occur due to pipes or redirections."
+		rejectMsg := "The command was automatically rejected. If using Task tools, please restart them. Otherwise, try a different command. This may occur due to pipes or redirections."
 		n, err = p.ptmx.WriteString(rejectMsg)
 		debugf("[DEBUG] Auto-reject message WriteString(%q) returned n=%d, err=%v\n", rejectMsg, n, err)
 		p.ptmx.Sync()
@@ -273,7 +273,7 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 			time.Sleep(500 * time.Millisecond)
 
 			// Now send the rejection message
-			rejectMsg := "The command was automatically rejected after wait period. Please try a different command."
+			rejectMsg := "The command was automatically rejected after wait period. If using Task tools, please restart them. Otherwise, try a different command."
 			n, err = p.ptmx.WriteString(rejectMsg)
 			debugf("[DEBUG] Auto-reject-wait message WriteString(%q) returned n=%d, err=%v\n", rejectMsg, n, err)
 			p.ptmx.Sync()
