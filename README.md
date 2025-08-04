@@ -39,15 +39,16 @@ dcode --auto-reject
 **Use case**: Fully automated environments where no user interaction is desired.
 
 ### `--auto-reject-wait=N`
-Waits N seconds for user intervention before automatically rejecting.
+Shows a dialog with timeout information and waits N seconds for user intervention before automatically rejecting.
 
 ```bash
 dcode --auto-reject-wait=10  # Wait 10 seconds for user input
 ```
 
 **Features**:
-- If user presses any choice key (1, 2, 3) or Enter during wait period, cancels auto-reject
-- If no user input is detected, automatically rejects after specified time
-- Provides safety window for user intervention while ensuring eventual rejection
+- **📱 Interactive Dialog**: Shows native macOS dialog indicating auto-reject timeout
+- **⏱️ Timeout Protection**: Automatically rejects after specified time if no user response
+- **🎯 User Override**: User can choose any option during wait period to override auto-reject
+- **🔒 Graceful Fallback**: If dialog fails or times out, safely defaults to rejection
 
-**Use case**: Semi-automated environments where you want to give users a chance to intervene but ensure commands don't hang indefinitely.
+**Use case**: Semi-automated environments where you want to give users a visual prompt and chance to intervene but ensure commands don't hang indefinitely.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -31,6 +32,9 @@ const (
 	LineProcessDelayMs   = 100
 	FinalDelayMs         = 500
 	PromptDuplicationSec = 5
+	// Auto-reject timing constants
+	AutoRejectChoiceDelayMs = 500
+	AutoRejectCRDelayMs     = 400
 )
 
 var (
@@ -226,71 +230,121 @@ func (p *PermissionHandler) sendAutoReject() {
 	}()
 }
 
-func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
-	// Find the highest numbered choice (typically 2 or 3 for reject)
+// findMaxRejectChoice finds the highest numbered choice for auto-reject (typically 2 or 3)
+func findMaxRejectChoice(choices map[string]string) string {
 	maxChoice := "2"
 	for num := 3; num >= 2; num-- {
 		numStr := fmt.Sprintf("%d", num)
-		if _, exists := p.appState.Prompt.CollectedChoices[numStr]; exists {
+		if _, exists := choices[numStr]; exists {
 			maxChoice = numStr
 			break
 		}
 	}
+	return maxChoice
+}
 
-	debugf("[DEBUG] Auto-reject-wait mode (%d seconds), will wait before sending %s\n", *autoRejectWait, maxChoice)
+func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
+	maxChoice := findMaxRejectChoice(p.appState.Prompt.CollectedChoices)
+
+	debugf("[DEBUG] Auto-reject-wait mode (%d seconds), showing dialog with countdown\n", *autoRejectWait)
 	go func() {
-		// Show a wait message to indicate the wait period
-		waitMsg := fmt.Sprintf("Auto-rejecting in %d seconds... (press any key to intervene)", *autoRejectWait)
-		p.ptmx.WriteString(waitMsg + "\r\n")
-		p.ptmx.Sync()
+		// Create context with timeout to prevent goroutine leak
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*autoRejectWait)*time.Second)
+		defer cancel()
 		
-		// Wait a moment for the message to be displayed before starting to monitor input
-		time.Sleep(500 * time.Millisecond)
+		// Create a channel to receive user choice from dialog
+		userChoiceChan := make(chan string, 1)
+		defer close(userChoiceChan)
 		
-		// Set flag to indicate we're waiting for input (after initial output settles)
-		p.waitingForInput = true
+		// Show dialog with countdown in a separate goroutine
+		go func() {
+			defer func() {
+				// Ensure we don't block on channel send if context is cancelled
+				if ctx.Err() != nil {
+					return
+				}
+			}()
+			
+			// Create custom message with countdown info
+			countdownMsg := fmt.Sprintf("%s\n\nThis will auto-reject in %d seconds...", p.appState.Prompt.LastLine, *autoRejectWait)
+			userChoice := dialog.AskWithChoicesContextAndReason(countdownMsg, p.appState.Prompt.CollectedChoices, p.contextLines, p.appState.Prompt.TriggerReason, p.appState.Prompt.TriggerLine)
+			
+			select {
+			case userChoiceChan <- userChoice:
+			case <-ctx.Done():
+				// Context cancelled, don't send choice
+				return
+			}
+		}()
 
-		// Wait for the specified number of seconds
+		// Wait for either user choice or timeout
 		waitDuration := time.Duration(*autoRejectWait) * time.Second
-		debugf("[DEBUG] Waiting %v before auto-reject\n", waitDuration)
-		
-		// Start a timer for the wait period
 		timer := time.NewTimer(waitDuration)
-		<-timer.C
 		
-		// Check if user intervened during wait period
-		if p.waitingForInput {
-			// No user intervention, proceed with auto-reject
-			debugf("[DEBUG] Wait period expired, no user intervention detected, proceeding with auto-reject\n")
+		select {
+		case userChoice := <-userChoiceChan:
+			// User made a choice before timeout
+			timer.Stop()
+			debugf("[DEBUG] User selected choice %s before timeout\n", userChoice)
+			
+			if err := p.writeToTerminal(userChoice); err != nil {
+				debugf("[ERROR] Failed to write user choice: %v\n", err)
+				return
+			}
+			
+			p.handleDialogCooldown()
+			
+		case <-timer.C:
+			// Timeout expired, proceed with auto-reject
+			debugf("[DEBUG] Wait period expired, proceeding with auto-reject\n")
 			
 			// Send the max choice number without newline (like dialog mode)
 			debugf("[DEBUG] About to send choice: %s\n", maxChoice)
-			n, err := p.ptmx.WriteString(maxChoice)
-			debugf("[DEBUG] Auto-reject-wait WriteString(%q) returned n=%d, err=%v\n", maxChoice, n, err)
-			p.ptmx.Sync()
+			if err := p.writeToTerminal(maxChoice); err != nil {
+				debugf("[ERROR] Failed to write auto-reject choice: %v\n", err)
+				return
+			}
 
 			// Wait for the choice to be processed
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(AutoRejectChoiceDelayMs * time.Millisecond)
 
 			// Now send the rejection message
 			rejectMsg := "The command was automatically rejected after wait period. If using Task tools, please restart them. Otherwise, try a different command."
-			n, err = p.ptmx.WriteString(rejectMsg)
-			debugf("[DEBUG] Auto-reject-wait message WriteString(%q) returned n=%d, err=%v\n", rejectMsg, n, err)
-			p.ptmx.Sync()
+			if err := p.writeToTerminal(rejectMsg); err != nil {
+				debugf("[ERROR] Failed to write auto-reject message: %v\n", err)
+				return
+			}
 
 			// Send carriage return separately
-			time.Sleep(400 * time.Millisecond)
-			n, err = p.ptmx.WriteString("\r")
-			debugf("[DEBUG] Auto-reject-wait CR WriteString(%q) returned n=%d, err=%v\n", "\r", n, err)
-			p.ptmx.Sync()
+			time.Sleep(AutoRejectCRDelayMs * time.Millisecond)
+			if err := p.writeToTerminal("\r"); err != nil {
+				debugf("[ERROR] Failed to write carriage return: %v\n", err)
+				return
+			}
 			debugf("[DEBUG] Auto-reject-wait complete\n")
-		} else {
-			// User intervened during wait period, cancel auto-reject
-			debugf("[DEBUG] User intervened during wait period, auto-reject cancelled\n")
 		}
-		
-		// Reset the flag
-		p.waitingForInput = false
+	}()
+}
+
+func (p *PermissionHandler) writeToTerminal(text string) error {
+	n, err := p.ptmx.WriteString(text)
+	debugf("[DEBUG] WriteString(%q) returned n=%d, err=%v\n", text, n, err)
+	if err != nil {
+		return fmt.Errorf("failed to write to terminal: %w", err)
+	}
+	p.ptmx.Sync()
+	return nil
+}
+
+func (p *PermissionHandler) handleDialogCooldown() {
+	// Set cooldown in deduplication manager
+	p.appState.Deduplicator.SetDialogCooldown("main_dialog")
+	
+	go func() {
+		time.Sleep(DialogResetDelayMs * time.Millisecond)
+		p.appState.Prompt.JustShown = false
+		p.appState.Deduplicator.ClearCooldown("main_dialog")
+		debugf("[DEBUG] Dialog cooldown reset\n")
 	}()
 }
 
@@ -301,20 +355,12 @@ func (p *PermissionHandler) showDialog(bestChoice string) {
 		debugf("[DEBUG] User selected choice %s\n", userChoice)
 
 		if userChoice != "" {
-			n, err := p.ptmx.WriteString(userChoice)
-			debugf("[DEBUG] User choice WriteString(%q) returned n=%d, err=%v\n", userChoice, n, err)
+			if err := p.writeToTerminal(userChoice); err != nil {
+				debugf("[ERROR] Failed to write user choice: %v\n", err)
+				return
+			}
 
-			// Set cooldown in deduplication manager
-			p.appState.Deduplicator.SetDialogCooldown("main_dialog")
-
-			go func() {
-				time.Sleep(DialogResetDelayMs * time.Millisecond)
-				p.appState.Prompt.JustShown = false
-				p.appState.Deduplicator.ClearCooldown("main_dialog")
-				debugf("[DEBUG] Dialog cooldown reset\n")
-			}()
-
-			p.ptmx.Sync()
+			p.handleDialogCooldown()
 		} else {
 			debugf("[DEBUG] No choice to send (dialog not shown yet)\n")
 		}
