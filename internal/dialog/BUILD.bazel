@@ -2,12 +2,10 @@ load("@rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "dialog",
-    srcs = ["dialog.go"],
+    srcs = [
+        "dialog.go",
+        "simple_dialog.go",
+    ],
     importpath = "github.com/takahirom/dialog-code/internal/dialog",
     visibility = ["//:__subpackages__"],
-    deps = [
-        "//internal/choice",
-        "//internal/debug",
-        "//internal/types",
-    ],
 )

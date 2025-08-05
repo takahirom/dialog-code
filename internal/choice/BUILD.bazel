@@ -6,14 +6,16 @@ go_library(
     importpath = "github.com/takahirom/dialog-code/internal/choice",
     visibility = ["//:__subpackages__"],
     deps = [
-        "//internal/debug",
         "//internal/types",
     ],
 )
 
 go_test(
     name = "choice_test",
-    srcs = ["choice_test.go"],
+    srcs = [
+        "choice_test.go",
+        "choice_clean_dialog_test.go",
+    ],
     embed = [":choice"],
     deps = [
         "//internal/types",

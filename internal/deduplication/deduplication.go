@@ -51,7 +51,7 @@ func (dm *DeduplicationManager) StripAnsi(s string) string {
 // ShouldProcessPrompt determines if a prompt should be processed based on deduplication rules
 func (dm *DeduplicationManager) ShouldProcessPrompt(prompt string) bool {
 	cleanPrompt := dm.StripAnsi(prompt)
-	
+
 	dm.mutex.Lock()
 	defer dm.mutex.Unlock()
 
@@ -89,7 +89,7 @@ func (dm *DeduplicationManager) ShouldProcessWithCooldown(prompt string, cooldow
 // MarkPromptProcessed marks a prompt as processed with current timestamp
 func (dm *DeduplicationManager) MarkPromptProcessed(prompt string) {
 	cleanPrompt := dm.StripAnsi(prompt)
-	
+
 	dm.mutex.Lock()
 	defer dm.mutex.Unlock()
 

@@ -33,16 +33,16 @@ func GetLogger() *Logger {
 func (l *Logger) Enable() error {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	
+
 	if l.enabled {
 		return nil
 	}
-	
+
 	file, err := os.OpenFile("debug_output.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
-	
+
 	l.file = file
 	l.enabled = true
 	return nil
@@ -52,11 +52,11 @@ func (l *Logger) Enable() error {
 func (l *Logger) Disable() {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	
+
 	if !l.enabled {
 		return
 	}
-	
+
 	if l.file != nil {
 		l.file.Close()
 		l.file = nil
@@ -75,7 +75,7 @@ func (l *Logger) IsEnabled() bool {
 func (l *Logger) Printf(format string, args ...interface{}) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	
+
 	if l.enabled && l.file != nil {
 		fmt.Fprintf(l.file, format, args...)
 	}
@@ -85,7 +85,7 @@ func (l *Logger) Printf(format string, args ...interface{}) {
 func (l *Logger) Println(args ...interface{}) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	
+
 	if l.enabled && l.file != nil {
 		fmt.Fprintln(l.file, args...)
 	}
