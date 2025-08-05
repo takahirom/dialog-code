@@ -13,6 +13,10 @@ import (
 	"github.com/takahirom/dialog-code/internal/types"
 )
 
+// Constants for configuration
+const (
+	PTYBufferSize = 1024 // Buffer size for PTY reading
+)
 
 // PermissionCallback defines the callback for permission requests
 type PermissionCallback func(message string, buttons []string, defaultButton string) string
@@ -336,7 +340,13 @@ func (p *PermissionHandler) processChoice(line, cleanLine string) {
 
 func (p *PermissionHandler) handleUserChoice(bestChoice string) {
 	if *autoApprove {
-		p.sendAutoApprove(bestChoice)
+		errCh := p.sendAutoApprove(bestChoice)
+		go func() {
+			if err := <-errCh; err != nil {
+				// Log error but continue operation
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+			}
+		}()
 	} else if *autoReject {
 		p.sendAutoReject()
 	} else if *autoRejectWait > 0 {
@@ -346,13 +356,17 @@ func (p *PermissionHandler) handleUserChoice(bestChoice string) {
 	}
 }
 
-func (p *PermissionHandler) sendAutoApprove(choice string) {
+func (p *PermissionHandler) sendAutoApprove(choice string) <-chan error {
+	errCh := make(chan error, 1)
 	go func() {
+		defer close(errCh)
 		time.Sleep(AutoApproveDelayMs * time.Millisecond)
 		if err := p.writeToTerminal(choice); err != nil {
-			// Auto-approve failed, continue silently
+			errCh <- fmt.Errorf("auto-approve failed: %w", err)
+			return
 		}
 	}()
+	return errCh
 }
 
 func (p *PermissionHandler) sendAutoReject() {
@@ -539,11 +553,12 @@ func (a *App) Run() error {
 	dialog.InitGlobals()
 
 	// Single read loop that handles both output and permission detection
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, PTYBufferSize)
 	var lineBuffer []byte
 
 	// Create a pipe to process data
 	pipeReader, pipeWriter := io.Pipe()
+	defer pipeWriter.Close()
 
 	// Start output handling from pipe
 	go func() {
@@ -557,8 +572,7 @@ func (a *App) Run() error {
 			if err == io.EOF {
 				break
 			}
-			// PTY read error, stop processing
-			break
+			return fmt.Errorf("PTY read error: %w", err)
 		}
 
 		// Write to pipe for output
@@ -587,7 +601,6 @@ func (a *App) Run() error {
 		}
 	}
 
-	pipeWriter.Close()
 	return nil
 }
 
