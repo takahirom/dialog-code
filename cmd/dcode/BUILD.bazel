@@ -1,14 +1,18 @@
-load("@rules_go//go:def.bzl", "go_binary", "go_library")
+load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 
 go_library(
     name = "dcode_lib",
-    srcs = ["main.go"],
+    srcs = [
+        "main.go",
+        "app.go",
+    ],
     importpath = "github.com/takahirom/dialog-code/cmd/dcode",
     visibility = ["//visibility:private"],
     deps = [
         "//internal/choice",
         "//internal/debug",
         "//internal/dialog",
+        "//internal/parser",
         "//internal/types",
         "@com_github_creack_pty//:pty",
         "@org_golang_x_term//:term",
@@ -19,4 +23,23 @@ go_binary(
     name = "dcode",
     embed = [":dcode_lib"],
     visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "dcode_test",
+    srcs = [
+        "app_test.go",
+        "main_test.go",
+        "app_robot.go",
+    ],
+    embed = [":dcode_lib"],
+    deps = [
+        "//internal/choice",
+        "//internal/debug",
+        "//internal/dialog",
+        "//internal/parser",
+        "//internal/types",
+        "@com_github_creack_pty//:pty",
+        "@org_golang_x_term//:term",
+    ],
 )
