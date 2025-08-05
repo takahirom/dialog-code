@@ -13,6 +13,7 @@ import (
 	"github.com/takahirom/dialog-code/internal/types"
 )
 
+
 // PermissionCallback defines the callback for permission requests
 type PermissionCallback func(message string, buttons []string, defaultButton string) string
 
