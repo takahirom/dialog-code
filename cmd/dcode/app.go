@@ -116,6 +116,13 @@ func (t *FakeTimeProvider) Now() time.Time {
 	return t.FakeTime
 }
 
+// SetTime safely updates the fake time under a write lock
+func (t *FakeTimeProvider) SetTime(tm time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.FakeTime = tm
+}
+
 // FakeDialog implements DialogInterface for testing
 type FakeDialog struct {
 	mu              sync.RWMutex

@@ -163,9 +163,7 @@ func (r *AppRobot) PrintCapturedMessage() *AppRobot {
 
 // SetFakeTime sets the fake time for the time provider
 func (r *AppRobot) SetFakeTime(fakeTime time.Time) *AppRobot {
-	r.timeProvider.mu.Lock()
-	defer r.timeProvider.mu.Unlock()
-	r.timeProvider.FakeTime = fakeTime
+	r.timeProvider.SetTime(fakeTime)
 	return r
 }
 
