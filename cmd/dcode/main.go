@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -246,7 +247,6 @@ func findMaxRejectChoice(choices map[string]string) string {
 func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 	maxChoice := findMaxRejectChoice(p.appState.Prompt.CollectedChoices)
 
-	debugf("[DEBUG] Auto-reject-wait mode (%d seconds), showing dialog with countdown\n", *autoRejectWait)
 	go func() {
 		// Create context with timeout to prevent goroutine leak
 		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*autoRejectWait)*time.Second)
@@ -254,26 +254,45 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 		
 		// Create a channel to receive user choice from dialog
 		userChoiceChan := make(chan string, 1)
-		defer close(userChoiceChan)
+		var channelClosed bool
+		var channelMutex sync.Mutex
+		
+		safeCloseChannel := func() {
+			channelMutex.Lock()
+			defer channelMutex.Unlock()
+			if !channelClosed {
+				close(userChoiceChan)
+				channelClosed = true
+			}
+		}
+		
+		canSendToChannel := func() bool {
+			channelMutex.Lock()
+			defer channelMutex.Unlock()
+			return !channelClosed && ctx.Err() == nil
+		}
+		
+		markChannelClosed := func() {
+			channelMutex.Lock()
+			defer channelMutex.Unlock()
+			channelClosed = true
+		}
+		
+		defer safeCloseChannel()
 		
 		// Show dialog with countdown in a separate goroutine
 		go func() {
-			defer func() {
-				// Ensure we don't block on channel send if context is cancelled
-				if ctx.Err() != nil {
-					return
-				}
-			}()
-			
 			// Create custom message with countdown info
 			countdownMsg := fmt.Sprintf("%s\n\nThis will auto-reject in %d seconds...", p.appState.Prompt.LastLine, *autoRejectWait)
 			userChoice := dialog.AskWithChoicesContextAndReason(countdownMsg, p.appState.Prompt.CollectedChoices, p.contextLines, p.appState.Prompt.TriggerReason, p.appState.Prompt.TriggerLine)
 			
-			select {
-			case userChoiceChan <- userChoice:
-			case <-ctx.Done():
-				// Context cancelled, don't send choice
-				return
+			// Safe channel send with closed check
+			if canSendToChannel() {
+				select {
+				case userChoiceChan <- userChoice:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}()
 
@@ -296,10 +315,9 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 			
 		case <-timer.C:
 			// Timeout expired, proceed with auto-reject
-			debugf("[DEBUG] Wait period expired, proceeding with auto-reject\n")
+			markChannelClosed()
 			
 			// Send the max choice number without newline (like dialog mode)
-			debugf("[DEBUG] About to send choice: %s\n", maxChoice)
 			if err := p.writeToTerminal(maxChoice); err != nil {
 				debugf("[ERROR] Failed to write auto-reject choice: %v\n", err)
 				return
@@ -321,7 +339,6 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 				debugf("[ERROR] Failed to write carriage return: %v\n", err)
 				return
 			}
-			debugf("[DEBUG] Auto-reject-wait complete\n")
 		}
 	}()
 }

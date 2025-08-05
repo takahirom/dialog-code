@@ -166,3 +166,53 @@ func TestFindMaxRejectChoice(t *testing.T) {
 		})
 	}
 }
+
+func TestSendAutoRejectWithWait_RaceCondition(t *testing.T) {
+	// Test for the race condition bug where dialog completes after timeout
+	appState := types.NewAppState()
+	appState.Prompt.CollectedChoices = map[string]string{
+		"1": "approve",
+		"2": "reject",
+		"3": "reject permanently",
+	}
+	
+	tmpFile, err := os.CreateTemp("", "test_terminal")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+	
+	handler := &PermissionHandler{
+		ptmx:     tmpFile,
+		appState: appState,
+	}
+	
+	// Use very short timeout to trigger race condition
+	originalTimeout := *autoRejectWait
+	*autoRejectWait = 1 // 1 second timeout
+	defer func() { *autoRejectWait = originalTimeout }()
+	
+	// Test should not panic even with the race condition
+	handler.sendAutoRejectWithWait("1")
+	
+	// Wait longer than timeout to ensure any lingering goroutines complete
+	time.Sleep(2000 * time.Millisecond)
+	
+	// Verify timeout behavior occurred correctly
+	tmpFile.Seek(0, 0)
+	buf := make([]byte, 1024)
+	n, _ := tmpFile.Read(buf)
+	content := string(buf[:n])
+	
+	// Should contain the max choice "3" since timeout should have occurred
+	if !strings.Contains(content, "3") {
+		t.Errorf("Expected terminal output to contain timeout choice '3', got: %q", content)
+	}
+	
+	// Verify no goroutine leak by checking that we can complete without hanging
+	// The fact that we reach this point without panic verifies the race condition fix
+	if len(strings.TrimSpace(content)) == 0 {
+		t.Error("Expected some content to be written during timeout scenario")
+	}
+}
