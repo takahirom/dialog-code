@@ -381,3 +381,20 @@ func InitGlobals() {
 func SetPtmxGlobal(ptmx *os.File) {
 	ptmxGlobal = ptmx
 }
+
+// Show displays a simple dialog with message, buttons and default button
+func Show(message string, buttons []string, defaultButton string) string {
+	if len(buttons) == 0 {
+		buttons = []string{"OK"}
+		defaultButton = "OK"
+	}
+	
+	// Build choices map for compatibility with existing dialog system
+	choices := make(map[string]string)
+	for i, button := range buttons {
+		choices[fmt.Sprintf("%d", i+1)] = fmt.Sprintf("%d. %s", i+1, button)
+	}
+	
+	// Use existing dialog system
+	return AskWithChoicesContextAndReason(message, choices, nil, "", "")
+}

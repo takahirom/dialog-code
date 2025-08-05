@@ -20,7 +20,8 @@ func TestWriteToTerminal(t *testing.T) {
 	defer tmpFile.Close()
 
 	handler := &PermissionHandler{
-		ptmx: tmpFile,
+		ptmx:   tmpFile,
+		dialog: &RealDialog{},
 	}
 
 	// Test basic write functionality
@@ -69,6 +70,7 @@ func TestSendAutoRejectWithWait_MaxChoiceSelection(t *testing.T) {
 	handler := &PermissionHandler{
 		ptmx:     tmpFile,
 		appState: appState,
+		dialog:   &RealDialog{},
 	}
 
 	// Set a short timeout for testing
@@ -111,6 +113,7 @@ func TestHandleDialogCooldown(t *testing.T) {
 
 	handler := &PermissionHandler{
 		appState: appState,
+		dialog:   &RealDialog{},
 	}
 
 	// Verify JustShown is initially true
@@ -200,6 +203,7 @@ func TestSendAutoRejectWithWait_DialogAfterTimeout(t *testing.T) {
 	handler := &PermissionHandler{
 		ptmx:     tmpFile,
 		appState: appState,
+		dialog:   &RealDialog{},
 	}
 
 	// Use very short timeout to trigger race condition
