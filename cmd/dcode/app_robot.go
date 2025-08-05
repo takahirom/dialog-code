@@ -23,13 +23,14 @@ func NewAppRobot(t *testing.T) *AppRobot {
 		t.Fatalf("Failed to create fake PTY: %v", err)
 	}
 
-	fakeDialog := &FakeDialog{
-		ReturnChoice: "1",
-	}
-
 	// Use fixed time for consistent testing
 	fakeTimeProvider := &FakeTimeProvider{
 		FakeTime: time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC),
+	}
+
+	fakeDialog := &FakeDialog{
+		ReturnChoice: "1",
+		TimeProvider: fakeTimeProvider,
 	}
 
 	app := NewAppWithDialogAndTimeProvider(tmpFile, os.Stdout, fakeDialog, fakeTimeProvider)
@@ -87,10 +88,11 @@ func (r *AppRobot) AssertDialogText(expectedText string) *AppRobot {
 	return r
 }
 
-// AssertDialogTextExact verifies a custom message matches exactly (for timestamp-stripped comparisons)
-func (r *AppRobot) AssertDialogTextExact(actualMessage, expectedText string) *AppRobot {
+// AssertDialogTextWithoutTimestamp verifies dialog message matches exactly after stripping timestamp
+func (r *AppRobot) AssertDialogTextWithoutTimestamp(expectedText string) *AppRobot {
+	actualMessage := r.GetCapturedMessageWithoutTimestamp()
 	if actualMessage != expectedText {
-		r.t.Errorf("Expected dialog text to be exactly '%s', got: %q", expectedText, actualMessage)
+		r.t.Errorf("Expected dialog text (without timestamp) to be exactly '%s', got: %q", expectedText, actualMessage)
 	}
 	return r
 }
@@ -120,15 +122,6 @@ func (r *AppRobot) AssertButtonCount(expected int) *AppRobot {
 	actual := len(r.dialog.GetCapturedButtons())
 	if actual != expected {
 		r.t.Errorf("Expected %d buttons, got %d", expected, actual)
-	}
-	return r
-}
-
-// AssertMessageContains verifies the dialog message contains expected text
-func (r *AppRobot) AssertMessageContains(expectedText string) *AppRobot {
-	capturedMessage := r.dialog.GetCapturedMessage()
-	if !strings.Contains(capturedMessage, expectedText) {
-		r.t.Errorf("Expected dialog message to contain '%s', got: %q", expectedText, capturedMessage)
 	}
 	return r
 }
@@ -170,7 +163,7 @@ func (r *AppRobot) PrintCapturedMessage() *AppRobot {
 
 // SetFakeTime sets the fake time for the time provider
 func (r *AppRobot) SetFakeTime(fakeTime time.Time) *AppRobot {
-	r.timeProvider.FakeTime = fakeTime
+	r.timeProvider.SetTime(fakeTime)
 	return r
 }
 

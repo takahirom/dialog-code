@@ -55,7 +55,7 @@ func (m *MockTimeProvider) NewTicker(duration time.Duration) Ticker {
 // AdvanceTime advances the mock time by the given duration
 func (m *MockTimeProvider) AdvanceTime(duration time.Duration) {
 	m.currentTime = m.currentTime.Add(duration)
-	
+
 	// Trigger any tickers that should fire
 	for _, ticker := range m.tickers {
 		if !ticker.stopped {
@@ -98,7 +98,7 @@ func (mt *MockTicker) TriggerIfReady(currentTime time.Time) {
 	if mt.stopped {
 		return
 	}
-	
+
 	if mt.lastTick.IsZero() || currentTime.Sub(mt.lastTick) >= mt.duration {
 		select {
 		case mt.c <- currentTime:

@@ -16,7 +16,7 @@ func TestNewDeduplicationManager(t *testing.T) {
 	}
 
 	if dm.config.PromptDuplicationSeconds != config.PromptDuplicationSeconds {
-		t.Errorf("Expected PromptDuplicationSeconds %d, got %d", 
+		t.Errorf("Expected PromptDuplicationSeconds %d, got %d",
 			config.PromptDuplicationSeconds, dm.config.PromptDuplicationSeconds)
 	}
 }
@@ -24,7 +24,7 @@ func TestNewDeduplicationManager(t *testing.T) {
 func TestShouldProcessPrompt_DuplicateDetection(t *testing.T) {
 	config := DefaultConfig()
 	config.PromptDuplicationSeconds = 1 // 1 second for faster testing
-	
+
 	startTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	mockTime := NewMockTimeProvider(startTime)
 	dm := NewDeduplicationManagerWithTimeProvider(config, mockTime)
@@ -83,9 +83,9 @@ func TestShouldProcessPrompt_AnsiStripping(t *testing.T) {
 
 func TestCooldownMechanism(t *testing.T) {
 	config := DefaultConfig()
-	config.DialogCooldownMs = 100 // 100ms for faster testing
+	config.DialogCooldownMs = 100        // 100ms for faster testing
 	config.PromptDuplicationSeconds = 10 // Long enough to not interfere
-	
+
 	startTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	mockTime := NewMockTimeProvider(startTime)
 	dm := NewDeduplicationManagerWithTimeProvider(config, mockTime)
@@ -113,7 +113,7 @@ func TestCooldownMechanism(t *testing.T) {
 
 	// Use a different prompt to avoid duplication blocking
 	newPrompt := "Do you want to continue?"
-	
+
 	// Should be allowed after cooldown expires
 	if !dm.ShouldProcessWithCooldown(newPrompt, cooldownKey) {
 		t.Error("New prompt should be allowed after cooldown expires")
@@ -168,7 +168,7 @@ func TestMemoryCleanup(t *testing.T) {
 	config := DefaultConfig()
 	config.PromptDuplicationSeconds = 1
 	config.MaxEntries = 5 // Small limit to trigger cleanup
-	
+
 	startTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	mockTime := NewMockTimeProvider(startTime)
 	dm := NewDeduplicationManagerWithTimeProvider(config, mockTime)
@@ -231,7 +231,7 @@ func TestGetStats(t *testing.T) {
 	// Initially should be empty
 	processedCount, cooldownCount := dm.GetStats()
 	if processedCount != 0 || cooldownCount != 0 {
-		t.Errorf("Expected empty stats, got processed=%d, cooldown=%d", 
+		t.Errorf("Expected empty stats, got processed=%d, cooldown=%d",
 			processedCount, cooldownCount)
 	}
 
@@ -252,7 +252,7 @@ func TestGetStats(t *testing.T) {
 func TestSetProcessingCooldown(t *testing.T) {
 	config := DefaultConfig()
 	config.ProcessingCooldownMs = 50
-	
+
 	startTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	mockTime := NewMockTimeProvider(startTime)
 	dm := NewDeduplicationManagerWithTimeProvider(config, mockTime)
@@ -306,7 +306,7 @@ func TestPeriodicCleanup(t *testing.T) {
 	config := DefaultConfig()
 	config.PromptDuplicationSeconds = 1
 	config.CleanupInterval = time.Millisecond * 100 // Very frequent cleanup for testing
-	
+
 	startTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	mockTime := NewMockTimeProvider(startTime)
 	dm := NewDeduplicationManagerWithTimeProvider(config, mockTime)
@@ -325,7 +325,7 @@ func TestPeriodicCleanup(t *testing.T) {
 	// Entries should be cleaned up
 	processedCount, cooldownCount := dm.GetStats()
 	if processedCount > 0 || cooldownCount > 0 {
-		t.Errorf("Periodic cleanup should have removed expired entries, got processed=%d, cooldown=%d", 
+		t.Errorf("Periodic cleanup should have removed expired entries, got processed=%d, cooldown=%d",
 			processedCount, cooldownCount)
 	}
 }

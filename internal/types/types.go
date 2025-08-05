@@ -58,12 +58,12 @@ type AppState struct {
 func NewAppState() *AppState {
 	config := deduplication.Config{
 		PromptDuplicationSeconds: PromptDuplicationSeconds, // Use configured deduplication time
-		DialogCooldownMs:         500, // From main.go DialogCooldownMs  
+		DialogCooldownMs:         500,                      // From main.go DialogCooldownMs
 		ProcessingCooldownMs:     PromptProcessingCooldownMs,
 		MaxEntries:               1000,
 		CleanupInterval:          time.Minute * 5,
 	}
-	
+
 	return &AppState{
 		Dialog: &DialogState{},
 		Prompt: &PromptState{
@@ -104,26 +104,25 @@ func (r *RegexPatterns) StripAnsi(s string) string {
 	return r.AnsiEscape.ReplaceAllString(s, "")
 }
 
-
 // ShouldProcessPrompt determines if a prompt should be processed based on cooldown and duplicate detection
 func (state *AppState) ShouldProcessPrompt(prompt string, regexPatterns *RegexPatterns) bool {
 	cooldownKey := "main_dialog"
-	
+
 	// Check cooldown first (short-term dialog spacing)
 	cooldownStates := state.Deduplicator.GetCooldownStates()
 	if cooldownState, exists := cooldownStates[cooldownKey]; exists && cooldownState.JustShown {
 		// Only block if we're still in the immediate cooldown period
 		return false
 	}
-	
+
 	// Use the new deduplication system
 	if !state.Deduplicator.ShouldProcessPrompt(prompt) {
 		return false
 	}
-	
+
 	// Mark as processed in deduplication manager
 	state.Deduplicator.MarkPromptProcessed(prompt)
-	
+
 	return true
 }
 
@@ -134,13 +133,13 @@ func (state *AppState) AddContextLine(line string, regexPatterns *RegexPatterns)
 	if len(strings.TrimSpace(cleanLine)) == 0 || strings.HasPrefix(cleanLine, "[DEBUG]") {
 		return
 	}
-	
+
 	// Add to context buffer
 	state.Prompt.Context = append(state.Prompt.Context, cleanLine)
-	
+
 	// Keep only the last N lines
 	if len(state.Prompt.Context) > state.Prompt.ContextLines {
-		state.Prompt.Context = state.Prompt.Context[1:]  // Remove first element
+		state.Prompt.Context = state.Prompt.Context[1:] // Remove first element
 	}
 }
 
@@ -154,12 +153,13 @@ func (state *AppState) StartPromptCollection(prompt string) {
 }
 
 // StartPromptCollectionWithContext starts collecting choices with context identifier
-func (state *AppState) StartPromptCollectionWithContext(prompt string, contextIdentifier string) {
+func (state *AppState) StartPromptCollectionWithContext(prompt string, contextIdentifier string, context []string) {
 	state.Prompt.LastLine = contextIdentifier // Use context identifier instead of just prompt
 	state.Prompt.Started = true
 	state.Prompt.CollectedChoices = make(map[string]string) // Reset choices
+	state.Prompt.Context = context // Set the context
 	state.Prompt.TriggerLine = prompt
-	state.Prompt.TriggerReason = state.identifyTriggerReason(prompt, state.Prompt.Context)
+	state.Prompt.TriggerReason = state.identifyTriggerReason(prompt, context)
 }
 
 // identifyTriggerReason determines what triggered the dialog based on the prompt line and context
@@ -169,7 +169,8 @@ func (state *AppState) identifyTriggerReason(prompt string, context []string) st
 	for _, line := range context {
 		fullContext += " " + line
 	}
-	
+
+
 	// Check for specific function call patterns first
 	if strings.Contains(fullContext, "Write(") {
 		return "Write() function call"
@@ -197,7 +198,7 @@ func (state *AppState) identifyTriggerReason(prompt string, context []string) st
 	if strings.Contains(fullContext, "Permissions:") {
 		return "Permission list dialog"
 	}
-	if strings.Contains(prompt, "Do you want to proceed") {
+	if strings.Contains(fullContext, "Do you want to proceed") {
 		return "Proceed confirmation"
 	}
 	return "Unknown trigger"
@@ -208,9 +209,9 @@ func (state *AppState) AddChoice(choiceLine string, regexPatterns *RegexPatterns
 	if !state.Prompt.Started {
 		return
 	}
-	
+
 	cleanLine := regexPatterns.StripAnsi(choiceLine)
-	
+
 	// Check for any numbered choice (1., 2., 3.)
 	if matches := regexPatterns.ChoiceAny.FindStringSubmatch(cleanLine); len(matches) > 2 {
 		num := matches[1]
@@ -225,7 +226,7 @@ func (state *AppState) AddChoice(choiceLine string, regexPatterns *RegexPatterns
 	}
 }
 
-// DialogInterface defines the interface for showing permission dialogs
-type DialogInterface interface {
+// ChoiceDialogInterface defines the interface for showing permission dialogs with choices
+type ChoiceDialogInterface interface {
 	AskWithChoices(msg string, choices map[string]string) string
 }

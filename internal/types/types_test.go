@@ -6,7 +6,7 @@ import (
 
 func TestRegexPatterns(t *testing.T) {
 	patterns := NewRegexPatterns()
-	
+
 	t.Run("Permit pattern", func(t *testing.T) {
 		testCases := []struct {
 			input    string
@@ -24,7 +24,7 @@ func TestRegexPatterns(t *testing.T) {
 			{"Bash(ls -la)", false},
 			{"regular text", false},
 		}
-		
+
 		for _, tc := range testCases {
 			result := patterns.Permit.MatchString(tc.input)
 			if result != tc.expected {
@@ -32,7 +32,7 @@ func TestRegexPatterns(t *testing.T) {
 			}
 		}
 	})
-	
+
 	t.Run("ChoiceYes pattern", func(t *testing.T) {
 		testCases := []struct {
 			input    string
@@ -44,7 +44,7 @@ func TestRegexPatterns(t *testing.T) {
 			{"1. Deny", false},
 			{"2. No", false},
 		}
-		
+
 		for _, tc := range testCases {
 			result := patterns.ChoiceYes.MatchString(tc.input)
 			if result != tc.expected {
@@ -56,7 +56,7 @@ func TestRegexPatterns(t *testing.T) {
 
 func TestStripAnsi(t *testing.T) {
 	patterns := NewRegexPatterns()
-	
+
 	testCases := []struct {
 		input    string
 		expected string
@@ -66,7 +66,7 @@ func TestStripAnsi(t *testing.T) {
 		{"No ANSI codes", "No ANSI codes"},
 		{"\x1b[2K\x1b[1GParsing...", "Parsing..."},
 	}
-	
+
 	for _, tc := range testCases {
 		result := patterns.StripAnsi(tc.input)
 		if result != tc.expected {
@@ -78,7 +78,7 @@ func TestStripAnsi(t *testing.T) {
 func TestAppState(t *testing.T) {
 	state := NewAppState()
 	patterns := NewRegexPatterns()
-	
+
 	t.Run("Initial state", func(t *testing.T) {
 		if state.Dialog == nil {
 			t.Error("Dialog state should not be nil")
@@ -93,20 +93,20 @@ func TestAppState(t *testing.T) {
 			t.Error("Processed should not be nil")
 		}
 	})
-	
+
 	t.Run("ShouldProcessPrompt", func(t *testing.T) {
 		prompt := "Do you want to proceed?"
-		
+
 		// First occurrence should be processed
 		if !state.ShouldProcessPrompt(prompt, patterns) {
 			t.Error("First occurrence should be processed")
 		}
-		
+
 		// Same prompt should be detected as duplicate
 		if state.ShouldProcessPrompt(prompt, patterns) {
 			t.Error("Duplicate prompt should not be processed")
 		}
-		
+
 		// Different prompt should be processed
 		if !state.ShouldProcessPrompt("Different prompt?", patterns) {
 			t.Error("Different prompt should be processed")
@@ -117,14 +117,14 @@ func TestAppState(t *testing.T) {
 func TestContextCollection(t *testing.T) {
 	state := NewAppState()
 	patterns := NewRegexPatterns()
-	
+
 	t.Run("Context line collection", func(t *testing.T) {
 		// Add some context lines
 		state.AddContextLine("Writing file /path/to/file.txt", patterns)
 		state.AddContextLine("Read(/path/to/config.json)", patterns)
 		state.AddContextLine("Bash(npm install)", patterns)
 		state.AddContextLine("permission request incoming", patterns)
-		
+
 		// Check context was collected
 		if len(state.Prompt.Context) != 4 {
 			t.Errorf("Expected 4 context lines, got %d", len(state.Prompt.Context))
@@ -150,19 +150,22 @@ func (m *MockDialog) AskWithChoices(msg string, choices map[string]string) strin
 	return m.ReturnValue
 }
 
-func TestDialogInterface(t *testing.T) {
+func TestChoiceDialogInterface(t *testing.T) {
 	mock := &MockDialog{ReturnValue: "1"}
 	
+	// Verify it implements the interface
+	var _ ChoiceDialogInterface = mock
+
 	result := mock.AskWithChoices("Test message", map[string]string{"1": "Yes", "2": "No"})
-	
+
 	if result != "1" {
 		t.Errorf("Expected '1', got %q", result)
 	}
-	
+
 	if mock.CallCount != 1 {
 		t.Errorf("Expected 1 call, got %d", mock.CallCount)
 	}
-	
+
 	if mock.LastMsg != "Test message" {
 		t.Errorf("Expected 'Test message', got %q", mock.LastMsg)
 	}

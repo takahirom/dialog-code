@@ -9,34 +9,67 @@ import (
 	"time"
 
 	"github.com/takahirom/dialog-code/internal/choice"
-	"github.com/takahirom/dialog-code/internal/debug"
 	"github.com/takahirom/dialog-code/internal/dialog"
 	"github.com/takahirom/dialog-code/internal/types"
 )
 
+// Constants for configuration
+const (
+	PTYBufferSize     = 1024 // Buffer size for PTY reading
+	ContextBufferSize = 20   // Buffer size for context lines
+)
+
+// PermissionCallback defines the callback for permission requests
+type PermissionCallback func(message string, buttons []string, defaultButton string) string
+
 // App represents the main application
 type App struct {
-	ptmx         *os.File
-	handler      *PermissionHandler
-	displayWriter io.Writer
+	ptmx               *os.File
+	handler            *PermissionHandler
+	displayWriter      io.Writer
+	permissionCallback PermissionCallback
 }
 
 // NewApp creates a new App instance
 func NewApp(ptmx *os.File, displayWriter io.Writer) *App {
-	return &App{
+	app := &App{
 		ptmx:          ptmx,
-		handler:       NewPermissionHandler(ptmx),
 		displayWriter: displayWriter,
 	}
+	app.handler = NewPermissionHandler(ptmx, app.requestPermission)
+	return app
+}
+
+// SetPermissionCallback sets the callback for permission requests
+func (a *App) SetPermissionCallback(callback PermissionCallback) {
+	a.permissionCallback = callback
+	// Update handler with new callback
+	a.handler.permissionCallback = callback
+}
+
+// requestPermission is the internal method that calls the external callback
+func (a *App) requestPermission(message string, buttons []string, defaultButton string) string {
+	if a.permissionCallback != nil {
+		return a.permissionCallback(message, buttons, defaultButton)
+	}
+	// Fallback behavior if no callback is set
+	return "1" // Default to first button
 }
 
 // NewAppWithDialog creates a new App instance with custom dialog
+// Deprecated: Use NewApp with SetPermissionCallback instead
 func NewAppWithDialog(ptmx *os.File, displayWriter io.Writer, dialogInterface DialogInterface) *App {
-	return &App{
+	// Wrap dialog interface in callback
+	callback := func(message string, buttons []string, defaultButton string) string {
+		return dialogInterface.Show(message, buttons, defaultButton)
+	}
+	
+	app := &App{
 		ptmx:          ptmx,
-		handler:       NewPermissionHandlerWithDialog(ptmx, dialogInterface),
+		handler:       NewPermissionHandler(ptmx, callback),
 		displayWriter: displayWriter,
 	}
+	return app
 }
 
 // NewAppWithDialogAndTimeProvider creates a new App instance with custom dialog and time provider
@@ -74,11 +107,21 @@ func (t *RealTimeProvider) Now() time.Time {
 
 // FakeTimeProvider implements TimeProvider for testing
 type FakeTimeProvider struct {
+	mu       sync.RWMutex
 	FakeTime time.Time
 }
 
 func (t *FakeTimeProvider) Now() time.Time {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 	return t.FakeTime
+}
+
+// SetTime safely updates the fake time under a write lock
+func (t *FakeTimeProvider) SetTime(tm time.Time) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.FakeTime = tm
 }
 
 // FakeDialog implements DialogInterface for testing
@@ -88,6 +131,7 @@ type FakeDialog struct {
 	CapturedButtons []string
 	CapturedDefault string
 	ReturnChoice    string
+	TimeProvider    TimeProvider
 }
 
 func (d *FakeDialog) Show(message string, buttons []string, defaultButton string) string {
@@ -126,39 +170,39 @@ func (d *FakeDialog) GetCapturedDefault() string {
 }
 
 type PermissionHandler struct {
-	ptmx            *os.File
-	appState        *types.AppState
-	patterns        *types.RegexPatterns
-	contextLines    []string
-	waitingForInput bool
-	dialog          DialogInterface
-	timeProvider    TimeProvider
+	ptmx               *os.File
+	appState           *types.AppState
+	patterns           *types.RegexPatterns
+	contextLines       []string
+	waitingForInput    bool
+	timeProvider       TimeProvider
+	permissionCallback PermissionCallback
 }
 
-// buildDialogMessage constructs the dialog message from the permission prompt data
+// buildDialogMessage constructs the dialog message from the permission prompt data using new clean format
 func (p *PermissionHandler) buildDialogMessage(promptLine string, contextLines []string, triggerReason string) string {
-	var message strings.Builder
-	
-	// Add context if available  
-	if len(contextLines) > 0 {
-		message.WriteString("Context:\n")
-		for _, line := range contextLines {
-			if strings.TrimSpace(line) != "" {
-				message.WriteString(line + "\n")
-			}
-		}
-		message.WriteString("\n")
+	// Create timestamp for clean format
+	var timestamp string
+	if p.timeProvider != nil {
+		timestamp = fmt.Sprintf("%d", p.timeProvider.Now().UnixNano())
+	} else {
+		timestamp = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
-	
-	// Add the main prompt
-	message.WriteString(promptLine)
-	
-	// Add trigger reason if available
-	if triggerReason != "" {
-		message.WriteString("\n\nReason: " + triggerReason)
+
+	// Create regex patterns if not available
+	regexPatterns := p.patterns
+	if regexPatterns == nil {
+		regexPatterns = &types.RegexPatterns{}
 	}
-	
-	return message.String()
+
+	// Use the TriggerLine from appState if available, otherwise use promptLine
+	triggerLine := promptLine
+	if p.appState.Prompt.TriggerLine != "" {
+		triggerLine = p.appState.Prompt.TriggerLine
+	}
+
+	// Use the new clean dialog message format
+	return choice.GetCleanDialogMessage(promptLine, contextLines, triggerReason, triggerLine, timestamp, regexPatterns)
 }
 
 // extractButtons extracts button labels from collected choices
@@ -179,58 +223,61 @@ func (p *PermissionHandler) extractButtons() []string {
 	return buttons
 }
 
-func NewPermissionHandler(ptmx *os.File) *PermissionHandler {
+func NewPermissionHandler(ptmx *os.File, permissionCallback PermissionCallback) *PermissionHandler {
 	return &PermissionHandler{
-		ptmx:         ptmx,
-		appState:     types.NewAppState(),
-		patterns:     types.NewRegexPatterns(),
-		contextLines: make([]string, 0, 10),
-		dialog:       &RealDialog{},
-		timeProvider: &RealTimeProvider{},
+		ptmx:               ptmx,
+		appState:           types.NewAppState(),
+		patterns:           types.NewRegexPatterns(),
+		contextLines:       make([]string, 0, 10),
+		timeProvider:       &RealTimeProvider{},
+		permissionCallback: permissionCallback,
 	}
 }
 
+// NewPermissionHandlerWithDialog creates a handler that uses dialog interface via callback wrapper
+// Deprecated: Use NewPermissionHandler with callback instead
 func NewPermissionHandlerWithDialog(ptmx *os.File, dialogInterface DialogInterface) *PermissionHandler {
+	// Wrap the dialog interface in a callback
+	callback := func(message string, buttons []string, defaultButton string) string {
+		return dialogInterface.Show(message, buttons, defaultButton)
+	}
+	
 	return &PermissionHandler{
-		ptmx:         ptmx,
-		appState:     types.NewAppState(),
-		patterns:     types.NewRegexPatterns(),
-		contextLines: make([]string, 0, 10),
-		dialog:       dialogInterface,
-		timeProvider: &RealTimeProvider{},
+		ptmx:               ptmx,
+		appState:           types.NewAppState(),
+		patterns:           types.NewRegexPatterns(),
+		contextLines:       make([]string, 0, 10),
+		timeProvider:       &RealTimeProvider{},
+		permissionCallback: callback,
 	}
 }
 
+// NewPermissionHandlerWithDialogAndTimeProvider creates a handler with dialog interface and time provider
+// Deprecated: Use NewPermissionHandler with callback instead  
 func NewPermissionHandlerWithDialogAndTimeProvider(ptmx *os.File, dialogInterface DialogInterface, timeProvider TimeProvider) *PermissionHandler {
+	// Wrap the dialog interface in a callback
+	callback := func(message string, buttons []string, defaultButton string) string {
+		return dialogInterface.Show(message, buttons, defaultButton)
+	}
+	
 	return &PermissionHandler{
-		ptmx:         ptmx,
-		appState:     types.NewAppState(),
-		patterns:     types.NewRegexPatterns(),
-		contextLines: make([]string, 0, 10),
-		dialog:       dialogInterface,
-		timeProvider: timeProvider,
+		ptmx:               ptmx,
+		appState:           types.NewAppState(),
+		patterns:           types.NewRegexPatterns(),
+		contextLines:       make([]string, 0, 10),
+		timeProvider:       timeProvider,
+		permissionCallback: callback,
 	}
 }
 
 func (p *PermissionHandler) processLine(line string) {
 	cleanLine := p.patterns.StripAnsi(line)
 
-	// Log interesting lines for debugging
-	if strings.Contains(cleanLine, "permission") || strings.Contains(cleanLine, "approval") ||
-		strings.Contains(cleanLine, "requires") || strings.Contains(cleanLine, "Write(") ||
-		strings.Contains(cleanLine, "rejected") {
-		debugf("[DEBUG] Potential permission line: %q\n", cleanLine)
-	}
 
-	// Log permission prompts for debugging
-	if strings.Contains(cleanLine, "Do you want") {
-		debugf("[DEBUG] Permission prompt detected: %q\n", cleanLine)
-	}
-
-	// Collect context lines
-	if !p.appState.Prompt.Started && len(strings.TrimSpace(cleanLine)) > 0 && !strings.HasPrefix(cleanLine, "[DEBUG]") {
+	// Collect context lines (always collect unless it's debug)
+	if len(strings.TrimSpace(cleanLine)) > 0 && !strings.HasPrefix(cleanLine, "[DEBUG]") {
 		p.contextLines = append(p.contextLines, cleanLine)
-		if len(p.contextLines) > 10 {
+		if len(p.contextLines) > ContextBufferSize { // Increase buffer for dialog boxes
 			p.contextLines = p.contextLines[1:]
 		}
 	}
@@ -259,20 +306,14 @@ func (p *PermissionHandler) processLine(line string) {
 
 		if contextIdentifier != p.appState.Prompt.LastLine {
 			if p.shouldProcessPrompt(line) {
-				debugf("[DEBUG] Detected permission prompt: %q\n", p.patterns.StripAnsi(line))
-				p.appState.StartPromptCollectionWithContext(line, contextIdentifier)
-			} else {
-				debugf("[DEBUG] Permission prompt was BLOCKED by shouldProcessPrompt: %q\n", p.patterns.StripAnsi(line))
+				p.appState.StartPromptCollectionWithContext(line, contextIdentifier, p.contextLines)
 			}
-		} else {
-			debugf("[DEBUG] Permission prompt SKIPPED due to same context: %q\n", p.patterns.StripAnsi(line))
 		}
 		return
 	}
 
 	// Process choices if in prompt
 	if p.appState.Prompt.Started {
-		debugf("[DEBUG] Processing choice (prompt started): %q\n", cleanLine)
 		p.processChoice(line, cleanLine)
 	}
 }
@@ -287,37 +328,33 @@ func (p *PermissionHandler) shouldSkipLine(cleanLine string) bool {
 }
 
 func (p *PermissionHandler) shouldProcessPrompt(line string) bool {
-	if !p.appState.ShouldProcessPrompt(line, p.patterns) {
-		debugf("[DEBUG] Skipping prompt due to processing rules: %q\n", p.patterns.StripAnsi(line))
-		return false
-	}
-
-	return true
+	return p.appState.ShouldProcessPrompt(line, p.patterns)
 }
 
 func (p *PermissionHandler) processChoice(line, cleanLine string) {
-	debugf("[DEBUG] Checking line for choices: %q\n", cleanLine)
-
 	p.appState.AddChoice(line, p.patterns)
 
 	// Check if this is the end of choices
 	if strings.Contains(cleanLine, "╰") {
-		debugf("[DEBUG] End of choices detected (found ╰), making decision\n")
-		debugf("[DEBUG] Collected choices: %v\n", p.appState.Prompt.CollectedChoices)
 		p.appState.Prompt.Started = false
 
 		// Add a longer delay to ensure the prompt is fully rendered and processed
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(ChoiceProcessingDelayMs * time.Millisecond)
 
 		bestChoice := choice.GetBestChoiceFromState(p.appState, p.patterns)
-		debugf("[DEBUG] Best choice: %s, autoReject: %v\n", bestChoice, *autoReject)
 		p.handleUserChoice(bestChoice)
 	}
 }
 
 func (p *PermissionHandler) handleUserChoice(bestChoice string) {
 	if *autoApprove {
-		p.sendAutoApprove(bestChoice)
+		errCh := p.sendAutoApprove(bestChoice)
+		go func() {
+			if err := <-errCh; err != nil {
+				// Log error but continue operation
+				fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+			}
+		}()
 	} else if *autoReject {
 		p.sendAutoReject()
 	} else if *autoRejectWait > 0 {
@@ -327,14 +364,17 @@ func (p *PermissionHandler) handleUserChoice(bestChoice string) {
 	}
 }
 
-func (p *PermissionHandler) sendAutoApprove(choice string) {
-	debugf("[DEBUG] Auto-approve mode, will send %s\n", choice)
+func (p *PermissionHandler) sendAutoApprove(choice string) <-chan error {
+	errCh := make(chan error, 1)
 	go func() {
+		defer close(errCh)
 		time.Sleep(AutoApproveDelayMs * time.Millisecond)
-		n, err := p.ptmx.WriteString(choice)
-		debugf("[DEBUG] Auto-approve WriteString(%q) returned n=%d, err=%v\n", choice, n, err)
-		p.ptmx.Sync()
+		if err := p.writeToTerminal(choice); err != nil {
+			errCh <- fmt.Errorf("auto-approve failed: %w", err)
+			return
+		}
 	}()
+	return errCh
 }
 
 func (p *PermissionHandler) sendAutoReject() {
@@ -348,30 +388,27 @@ func (p *PermissionHandler) sendAutoReject() {
 		}
 	}
 
-	debugf("[DEBUG] Auto-reject mode, will send %s followed by rejection message\n", maxChoice)
 	go func() {
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(AutoRejectProcessDelayMs * time.Millisecond)
 		// Send the max choice number without newline (like dialog mode)
-		debugf("[DEBUG] About to send choice: %s\n", maxChoice)
-		n, err := p.ptmx.WriteString(maxChoice)
-		debugf("[DEBUG] Auto-reject WriteString(%q) returned n=%d, err=%v\n", maxChoice, n, err)
-		p.ptmx.Sync()
+		if err := p.writeToTerminal(maxChoice); err != nil {
+			return
+		}
 
 		// Wait for the choice to be processed
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(AutoRejectChoiceDelayMs * time.Millisecond)
 
 		// Now send the rejection message
 		rejectMsg := "The command was automatically rejected. If using Task tools, please restart them. Otherwise, try a different command. This may occur due to pipes or redirections."
-		n, err = p.ptmx.WriteString(rejectMsg)
-		debugf("[DEBUG] Auto-reject message WriteString(%q) returned n=%d, err=%v\n", rejectMsg, n, err)
-		p.ptmx.Sync()
+		if err := p.writeToTerminal(rejectMsg); err != nil {
+			return
+		}
 
 		// Send carriage return separately
-		time.Sleep(400 * time.Millisecond)
-		n, err = p.ptmx.WriteString("\r")
-		debugf("[DEBUG] Auto-reject CR WriteString(%q) returned n=%d, err=%v\n", "\r", n, err)
-		p.ptmx.Sync()
-		debugf("[DEBUG] Auto-reject complete\n")
+		time.Sleep(AutoRejectCRDelayMs * time.Millisecond)
+		if err := p.writeToTerminal("\r"); err != nil {
+			// Carriage return failed, continue silently
+		}
 	}()
 }
 
@@ -385,15 +422,22 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 
 		// Show dialog with countdown in a separate goroutine
 		go func() {
-			baseMessage := p.buildDialogMessage(p.appState.Prompt.LastLine, p.contextLines, p.appState.Prompt.TriggerReason)
+			baseMessage := p.buildDialogMessage(p.appState.Prompt.LastLine, p.appState.Prompt.Context, p.appState.Prompt.TriggerReason)
 			countdownMsg := fmt.Sprintf("%s\n\nThis will auto-reject in %d seconds...", baseMessage, *autoRejectWait)
 			buttons := p.extractButtons()
 			defaultButton := ""
 			if len(buttons) > 0 {
 				defaultButton = buttons[0]
 			}
-			userChoice := p.dialog.Show(countdownMsg, buttons, defaultButton)
 			
+			var userChoice string
+			if p.permissionCallback != nil {
+				userChoice = p.permissionCallback(countdownMsg, buttons, defaultButton)
+			} else {
+				// No permission callback set, cannot show dialog
+				userChoice = ""
+			}
+
 			select {
 			case userChoiceChan <- userChoice:
 			case <-done:
@@ -406,9 +450,7 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 		case userChoice := <-userChoiceChan:
 			// User made a choice before timeout
 			close(done)
-			debugf("[DEBUG] User selected choice %s before timeout\n", userChoice)
 			if err := p.writeToTerminal(userChoice); err != nil {
-				debugf("[ERROR] Failed to write user choice: %v\n", err)
 				return
 			}
 			p.handleDialogCooldown()
@@ -424,7 +466,6 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 func (p *PermissionHandler) writeAutoRejectChoice(maxChoice string) {
 	// Send the max choice number without newline (like dialog mode)
 	if err := p.writeToTerminal(maxChoice); err != nil {
-		debugf("[ERROR] Failed to write auto-reject choice: %v\n", err)
 		return
 	}
 
@@ -434,20 +475,18 @@ func (p *PermissionHandler) writeAutoRejectChoice(maxChoice string) {
 	// Now send the rejection message
 	rejectMsg := "The command was automatically rejected after wait period. If using Task tools, please restart them. Otherwise, try a different command."
 	if err := p.writeToTerminal(rejectMsg); err != nil {
-		debugf("[ERROR] Failed to write auto-reject message: %v\n", err)
 		return
 	}
 
 	// Send carriage return separately
 	time.Sleep(AutoRejectCRDelayMs * time.Millisecond)
 	if err := p.writeToTerminal("\r"); err != nil {
-		debugf("[ERROR] Failed to write carriage return: %v\n", err)
+		// Carriage return failed, continue silently
 	}
 }
 
 func (p *PermissionHandler) writeToTerminal(text string) error {
-	n, err := p.ptmx.WriteString(text)
-	debugf("[DEBUG] WriteString(%q) returned n=%d, err=%v\n", text, n, err)
+	_, err := p.ptmx.WriteString(text)
 	if err != nil {
 		return fmt.Errorf("failed to write to terminal: %w", err)
 	}
@@ -463,31 +502,32 @@ func (p *PermissionHandler) handleDialogCooldown() {
 		time.Sleep(DialogResetDelayMs * time.Millisecond)
 		p.appState.Prompt.JustShown = false
 		p.appState.Deduplicator.ClearCooldown("main_dialog")
-		debugf("[DEBUG] Dialog cooldown reset\n")
 	}()
 }
 
 func (p *PermissionHandler) showDialog(bestChoice string) {
 	go func() {
-		message := p.buildDialogMessage(p.appState.Prompt.LastLine, p.contextLines, p.appState.Prompt.TriggerReason)
+		message := p.buildDialogMessage(p.appState.Prompt.LastLine, p.appState.Prompt.Context, p.appState.Prompt.TriggerReason)
 		buttons := p.extractButtons()
 		defaultButton := ""
 		if len(buttons) > 0 {
 			defaultButton = buttons[0]
 		}
-		userChoice := p.dialog.Show(message, buttons, defaultButton)
-
-		debugf("[DEBUG] User selected choice %s\n", userChoice)
+		
+		var userChoice string
+		if p.permissionCallback != nil {
+			userChoice = p.permissionCallback(message, buttons, defaultButton)
+		} else {
+			// No permission callback set, cannot show dialog
+			userChoice = ""
+		}
 
 		if userChoice != "" {
 			if err := p.writeToTerminal(userChoice); err != nil {
-				debugf("[ERROR] Failed to write user choice: %v\n", err)
 				return
 			}
 
 			p.handleDialogCooldown()
-		} else {
-			debugf("[DEBUG] No choice to send (dialog not shown yet)\n")
 		}
 	}()
 }
@@ -505,6 +545,15 @@ func findMaxRejectChoice(choices map[string]string) string {
 	return maxChoice
 }
 
+// isUserInputPattern checks if the output contains patterns indicating user input
+func isUserInputPattern(output string) bool {
+	return strings.Contains(output, "1") || 
+		   strings.Contains(output, "2") || 
+		   strings.Contains(output, "3") ||
+		   strings.Contains(output, "\n") || 
+		   strings.Contains(output, "\r\n")
+}
+
 // Run starts the application
 func (a *App) Run() error {
 	// Initialize dialog globals
@@ -512,11 +561,12 @@ func (a *App) Run() error {
 	dialog.InitGlobals()
 
 	// Single read loop that handles both output and permission detection
-	buffer := make([]byte, 1024)
+	buffer := make([]byte, PTYBufferSize)
 	var lineBuffer []byte
 
 	// Create a pipe to process data
 	pipeReader, pipeWriter := io.Pipe()
+	defer pipeWriter.Close()
 
 	// Start output handling from pipe
 	go func() {
@@ -530,8 +580,7 @@ func (a *App) Run() error {
 			if err == io.EOF {
 				break
 			}
-			debugf("[ERROR] Reading from PTY: %v\n", err)
-			break
+			return fmt.Errorf("PTY read error: %w", err)
 		}
 
 		// Write to pipe for output
@@ -543,12 +592,7 @@ func (a *App) Run() error {
 			outputStr := string(buffer[:n])
 
 			// Detect specific user input patterns (choice numbers, enter key)
-			if strings.Contains(outputStr, "1") || // Choice 1
-				strings.Contains(outputStr, "2") || // Choice 2
-				strings.Contains(outputStr, "3") || // Choice 3
-				strings.Contains(outputStr, "\n") || // Enter key
-				strings.Contains(outputStr, "\r\n") { // Enter key (CRLF)
-				debugf("[DEBUG] User choice input detected in PTY output during wait period: %q\n", outputStr)
+			if isUserInputPattern(outputStr) {
 				a.handler.waitingForInput = false
 			}
 		}
@@ -565,10 +609,6 @@ func (a *App) Run() error {
 		}
 	}
 
-	pipeWriter.Close()
 	return nil
 }
 
-func debugf(format string, args ...interface{}) {
-	debug.Printf(format, args...)
-}

@@ -22,24 +22,27 @@ import (
 
 const (
 	// Timing constants for cooldowns and delays
-	DialogCooldownMs     = 500
-	AutoApproveDelayMs   = 100
-	DialogResetDelayMs   = 3000
-	CharDelayMs          = 10
-	LineProcessDelayMs   = 100
-	FinalDelayMs         = 500
-	PromptDuplicationSec = 5
+	DialogCooldownMs        = 500
+	AutoApproveDelayMs      = 100
+	DialogResetDelayMs      = 3000
+	CharDelayMs             = 10
+	LineProcessDelayMs      = 100
+	FinalDelayMs            = 500
+	PromptDuplicationSec    = 5
+	ChoiceProcessingDelayMs = 300
+	
 	// Auto-reject timing constants
 	AutoRejectChoiceDelayMs = 500
 	AutoRejectCRDelayMs     = 400
+	AutoRejectProcessDelayMs = 500
 )
 
 var (
-	autoApprove     = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
-	autoReject      = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
-	autoRejectWait  = flag.Int("auto-reject-wait", 0, "Auto-reject with N seconds wait for user intervention (0 = disabled)")
-	stripColors     = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
-	debugFlag       = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
+	autoApprove    = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
+	autoReject     = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
+	autoRejectWait = flag.Int("auto-reject-wait", 0, "Auto-reject with N seconds wait for user intervention (0 = disabled)")
+	stripColors    = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
+	debugFlag      = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
 )
 
 func main() {
@@ -94,7 +97,6 @@ func main() {
 	if !isPipe {
 		if size, err := pty.GetsizeFull(os.Stdin); err == nil {
 			pty.Setsize(ptmx, size)
-			debug.Printf("[DEBUG] Set initial terminal size: %dx%d\n", size.Cols, size.Rows)
 		}
 
 		// Handle terminal resize
@@ -104,12 +106,10 @@ func main() {
 			for range sigwinch {
 				if size, err := pty.GetsizeFull(os.Stdin); err == nil {
 					pty.Setsize(ptmx, size)
-					debug.Printf("[DEBUG] Terminal resized: %dx%d\n", size.Cols, size.Rows)
 				}
 			}
 		}()
 	}
-	debug.Printf("[DEBUG] Main: isPipe=%v, stat.Mode()=%v\n", isPipe, stat.Mode())
 
 	var oldState *term.State
 	if !isPipe {
@@ -128,26 +128,21 @@ func main() {
 	if isPipe {
 		// For piped input, read line by line and send with proper termination
 		go func() {
-			debug.Printf("[DEBUG] Starting piped input processing\n")
 			scanner := bufio.NewScanner(os.Stdin)
 			for scanner.Scan() {
 				line := scanner.Text()
-				debug.Printf("[DEBUG] Processing line: %q\n", line)
 
 				// Send the text character by character
 				for _, char := range line {
 					ptmx.WriteString(string(char))
 					time.Sleep(CharDelayMs * time.Millisecond)
 				}
-				debug.Printf("[DEBUG] Sent text, now sending Enter\n")
 				// Then send Enter key - try different approaches
 				time.Sleep(LineProcessDelayMs * time.Millisecond)
 				ptmx.WriteString("\n")
 				ptmx.Sync()
-				debug.Printf("[DEBUG] Sent Enter, done with line\n")
 				time.Sleep(FinalDelayMs * time.Millisecond)
 			}
-			debug.Printf("[DEBUG] Finished piped input processing\n")
 		}()
 	} else {
 		// For interactive input, use direct copy
@@ -166,6 +161,15 @@ func main() {
 
 	// Create and run the app
 	app := NewApp(ptmx, displayWriter)
+	
+	// Initialize dialog at application level (outside of app core)
+	simpleDialog := dialog.NewSimpleOSDialog()
+	
+	// Set up permission callback to use the simple dialog
+	app.SetPermissionCallback(func(message string, buttons []string, defaultButton string) string {
+		return simpleDialog.Show(message, buttons, defaultButton)
+	})
+	
 	if err := app.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "App error: %v\n", err)
 		os.Exit(1)
