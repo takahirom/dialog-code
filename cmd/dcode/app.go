@@ -11,7 +11,6 @@ import (
 	"github.com/takahirom/dialog-code/internal/choice"
 	"github.com/takahirom/dialog-code/internal/debug"
 	"github.com/takahirom/dialog-code/internal/dialog"
-	"github.com/takahirom/dialog-code/internal/parser"
 	"github.com/takahirom/dialog-code/internal/types"
 )
 
@@ -211,11 +210,6 @@ func NewPermissionHandlerWithDialogAndTimeProvider(ptmx *os.File, dialogInterfac
 		dialog:       dialogInterface,
 		timeProvider: timeProvider,
 	}
-}
-
-// ProcessWithParser processes context lines through parser before showing dialog
-func (p *PermissionHandler) ProcessWithParser(contextLinesStr string) (*parser.DialogInfo, error) {
-	return parser.ParseDialog(contextLinesStr)
 }
 
 func (p *PermissionHandler) processLine(line string) {

@@ -1,11 +1,10 @@
 package main
 
 import (
-	"strings"
 	"testing"
 )
 
-func TestAppWithParserIntegration(t *testing.T) {
+func TestAppWithDialogIntegration(t *testing.T) {
 	// Use actual dialog data that includes pre-dialog Claude output
 	realDialogLines := []string{
 		"⏺ Bash(rm not-found-file)",
@@ -25,8 +24,6 @@ func TestAppWithParserIntegration(t *testing.T) {
 		"╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯",
 	}
 
-	completeDialog := strings.Join(realDialogLines, "\n")
-
 	robot := NewAppRobot(t).
 		ReceiveClaudeText(realDialogLines...).
 		AssertDialogCaptured().
@@ -41,7 +38,7 @@ func TestAppWithParserIntegration(t *testing.T) {
 		AssertMessageContains("rm not-found-file").
 		AssertMessageContains("⏺ Bash(rm not-found-file)"). // Pre-dialog Claude output
 		AssertMessageContains("Running hook PreToolUse:Bash"). // Hook execution info
-		AssertParserExtractsToolTypeAndContent(completeDialog, "Bash", "rm not-found-file")
+		AssertDialogCaptured()
 
 	// Example of exact matching (note: includes timestamp so usually not practical)
 	capturedMessage := robot.GetCapturedMessage()
@@ -51,28 +48,7 @@ func TestAppWithParserIntegration(t *testing.T) {
 	// This is usually too brittle for real tests, so AssertDialogTextContains is preferred
 }
 
-func TestAppWithParserEdgeCases(t *testing.T) {
-	robot := NewAppRobot(t)
-
-	// Test with empty context
-	parsedInfo, err := robot.app.handler.ProcessWithParser("")
-	if err == nil {
-		t.Error("Parser should return error for empty input")
-	}
-	if parsedInfo != nil {
-		t.Error("Parser should return nil for empty input")
-	}
-
-	// Test with malformed dialog
-	malformedDialog := `╭─────────────────────────╮
-│ Incomplete dialog       │
-Missing closing border`
-
-	parsedInfo, err = robot.app.handler.ProcessWithParser(malformedDialog)
-	if err == nil {
-		t.Error("Parser should return error for malformed dialog")
-	}
-
+func TestAppWithEditDialog(t *testing.T) {
 	// Test with valid Edit dialog using Robot pattern
 	editDialogLines := []string{
 		"╭─────────────────────────────────────────────────────────────────╮",
@@ -85,17 +61,17 @@ Missing closing border`
 		"╰─────────────────────────────────────────────────────────────────╯",
 	}
 
-	completeEditDialog := strings.Join(editDialogLines, "\n")
-
 	NewAppRobot(t).
 		ReceiveClaudeText(editDialogLines...).
-		AssertParserExtractsToolTypeAndContent(completeEditDialog, "Edit", "/test/file.txt")
+		AssertDialogCaptured().
+		AssertDialogTextContains("Edit command").
+		AssertDialogTextContains("/test/file.txt")
 
-	t.Logf("Edge case tests passed")
+	t.Logf("Edit dialog test passed")
 }
 
-func TestAppParserDialogFlow(t *testing.T) {
-	// Test the complete flow: Claude output → context collection → parser → dialog
+func TestAppTaskDialogFlow(t *testing.T) {
+	// Test the complete flow: Claude output → context collection → dialog
 	taskDialogLines := []string{
 		"╭─────────────────────────────────────────────────────────────────╮",
 		"│ Task                                                            │",
@@ -109,8 +85,6 @@ func TestAppParserDialogFlow(t *testing.T) {
 		"╰─────────────────────────────────────────────────────────────────╯",
 	}
 
-	completeTaskDialog := strings.Join(taskDialogLines, "\n")
-
 	NewAppRobot(t).
 		SetDialogChoice("3"). // Choose "No" option
 		ReceiveClaudeText(taskDialogLines...).
@@ -121,10 +95,9 @@ func TestAppParserDialogFlow(t *testing.T) {
 		AssertButton(1, "No").
 		AssertMessageContains("Task").
 		AssertMessageContains("Execute dangerous operation").
-		AssertParserExtractsToolTypeAndContent(completeTaskDialog, "Task", "Execute dangerous operation").
 		LogDebugInfo()
 
-	t.Logf("Complete parser-dialog flow test passed")
+	t.Logf("Task dialog test passed")
 }
 
 func TestDialogExactMatch(t *testing.T) {

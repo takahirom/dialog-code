@@ -133,29 +133,6 @@ func (r *AppRobot) AssertMessageContains(expectedText string) *AppRobot {
 	return r
 }
 
-// AssertParserExtractsToolTypeAndContent tests parser integration with captured context
-func (r *AppRobot) AssertParserExtractsToolTypeAndContent(completeDialog string, expectedToolType string, expectedContent string) *AppRobot {
-	parsedInfo, err := r.app.handler.ProcessWithParser(completeDialog)
-	if err != nil {
-		r.t.Errorf("Parser should handle dialog, got error: %v", err)
-		return r
-	}
-
-	if parsedInfo == nil {
-		r.t.Error("Parser should return valid result")
-		return r
-	}
-
-	if parsedInfo.ToolType != expectedToolType {
-		r.t.Errorf("Expected ToolType '%s', got '%s'", expectedToolType, parsedInfo.ToolType)
-	}
-
-	if !strings.Contains(parsedInfo.RawContent, expectedContent) {
-		r.t.Errorf("Expected parser content to contain '%s', got: %s", expectedContent, parsedInfo.RawContent)
-	}
-
-	return r
-}
 
 // SetDialogChoice sets the choice that FakeDialog will return
 func (r *AppRobot) SetDialogChoice(choice string) *AppRobot {
