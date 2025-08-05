@@ -15,7 +15,8 @@ import (
 
 // Constants for configuration
 const (
-	PTYBufferSize = 1024 // Buffer size for PTY reading
+	PTYBufferSize     = 1024 // Buffer size for PTY reading
+	ContextBufferSize = 20   // Buffer size for context lines
 )
 
 // PermissionCallback defines the callback for permission requests

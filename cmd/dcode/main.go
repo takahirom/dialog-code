@@ -35,9 +35,6 @@ const (
 	AutoRejectChoiceDelayMs = 500
 	AutoRejectCRDelayMs     = 400
 	AutoRejectProcessDelayMs = 500
-	
-	// Buffer size constants
-	ContextBufferSize = 20
 )
 
 var (
