@@ -471,8 +471,7 @@ const (
 
 // isValidCommandLine checks if a line contains valid command information
 func isValidCommandLine(line string) bool {
-	cleanLine := strings.Trim(line, "│ \t")
-	cleanLine = strings.TrimSpace(cleanLine)
+	cleanLine := strings.TrimSpace(strings.Trim(line, "│ \t"))
 	
 	if cleanLine == "" {
 		return false
@@ -492,8 +491,18 @@ func isValidCommandLine(line string) bool {
 		}
 	}
 	
+	// Check for numbered dialog choices (1. Yes, 2. No, etc.)
+	if len(cleanLine) >= 3 && cleanLine[1] == '.' && cleanLine[0] >= '1' && cleanLine[0] <= '9' {
+		return false
+	}
+	
 	// Check for patterns that should be filtered at line start
 	if strings.HasPrefix(cleanLine, ">") || strings.HasPrefix(cleanLine, ".") {
+		return false
+	}
+	
+	// Skip lines that are only decorative characters
+	if strings.Trim(cleanLine, "─━┌┐└┘├┤┬┴┼╭╮╯╰╠╣╦╩╬ ") == "" {
 		return false
 	}
 	
@@ -502,25 +511,28 @@ func isValidCommandLine(line string) bool {
 
 // buildAutoRejectMessage creates auto-reject message with command details
 func (p *PermissionHandler) buildAutoRejectMessage() string {
-	// Get command details from dialog context
+	// Get command details from dialog context using parseDialogBox
 	if len(p.appState.Prompt.Context) > 0 {
-		var builder strings.Builder
+		dialogInfo := choice.ParseDialogBox(p.appState.Prompt.Context, p.patterns)
 		
-		for _, line := range p.appState.Prompt.Context {
-			// Look for command information (skip dialog box decorations)
-			if strings.Contains(line, "│") && isValidCommandLine(line) {
-				cleanLine := strings.Trim(line, "│ \t")
-				cleanLine = strings.TrimSpace(cleanLine)
+		// Build command details from parsed dialog box
+		if len(dialogInfo.CommandDetails) > 0 {
+			var builder strings.Builder
+			
+			for _, detail := range dialogInfo.CommandDetails {
+				if strings.TrimSpace(detail) == "" {
+					continue
+				}
 				
 				if builder.Len() > 0 {
 					builder.WriteString("\n")
 				}
-				builder.WriteString(cleanLine)
+				builder.WriteString(strings.TrimSpace(detail))
 			}
-		}
-		
-		if builder.Len() > 0 {
-			return fmt.Sprintf("Rejected command:\n%s\n\n%s", builder.String(), AutoRejectBaseMessage)
+			
+			if builder.Len() > 0 {
+				return fmt.Sprintf("Rejected command:\n%s\n\n%s", builder.String(), AutoRejectBaseMessage)
+			}
 		}
 	}
 	
