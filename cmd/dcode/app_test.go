@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAppWithDialogIntegration(t *testing.T) {
@@ -121,7 +122,6 @@ func TestDialogExactMatch(t *testing.T) {
 		ReceiveClaudeText(realDialogLines...).
 		AssertDialogCaptured()
 
-
 	// Test the new clean message format (without Context header and with organized structure)
 	expectedMessage := `Trigger text: ⏺ Bash(rm test-file)
 Trigger timestamp: 1672574400000000000
@@ -139,7 +139,7 @@ Do you want to proceed?`
 func TestRealWorldDialogData_TriggerTextMissing(t *testing.T) {
 	// This test reproduces the issue where Trigger text and Reason are missing
 	// when using real dialog data from test_data.txt
-	
+
 	realWorldDialogLines := []string{
 		"⏺ Bash(rm not-found-file)",
 		"  ⎿  Running hook PreToolUse:Bash...",
@@ -165,11 +165,11 @@ func TestRealWorldDialogData_TriggerTextMissing(t *testing.T) {
 	// Get the actual captured message
 	actualMessage := robot.GetCapturedMessage()
 	t.Logf("ACTUAL MESSAGE:\n%s", actualMessage)
-	
+
 	// Current problem: Missing Trigger text and Reason
 	// Expected: Should contain "Trigger text: ⏺ Bash(rm not-found-file)"
 	// Expected: Should contain "Reason: Bash command execution" (or similar)
-	
+
 	// This test should FAIL until we fix the issue
 	expectedMessage := `Trigger text: ⏺ Bash(rm not-found-file)
 Trigger timestamp: 1672574400000000000
@@ -193,7 +193,7 @@ Do you want to proceed?`
 func TestPipeCharacterCleanup(t *testing.T) {
 	// Test case where context doesn't contain ⏺ and triggerLine has pipe characters
 	// This reproduces the issue where "Trigger text: │ Do you want to proceed?" appears
-	
+
 	dialogLinesWithoutTrigger := []string{
 		"╭─────────────────────────────────────────────────────────────────────────────╮",
 		"│ Bash command                                                                │",
@@ -214,12 +214,12 @@ func TestPipeCharacterCleanup(t *testing.T) {
 	// Get the actual captured message
 	actualMessage := robot.GetCapturedMessage()
 	t.Logf("ACTUAL MESSAGE WITH MISSING TRIGGER:\n%s", actualMessage)
-	
+
 	// Check if pipe characters appear in the output
 	if strings.Contains(actualMessage, "│") {
 		t.Errorf("❌ Pipe characters found in dialog message!\nMessage: %s", actualMessage)
 	}
-	
+
 	// Check if triggerLine fallback creates incorrect trigger text
 	if strings.Contains(actualMessage, "Trigger text: │") {
 		t.Errorf("❌ Incorrect trigger text with pipe character!\nMessage: %s", actualMessage)
@@ -229,7 +229,7 @@ func TestPipeCharacterCleanup(t *testing.T) {
 func TestRealWorldPipeCharacterIssue(t *testing.T) {
 	// Test case that reproduces the exact issue user reported
 	// where pipe characters appear in command details
-	
+
 	realIssueLines := []string{
 		"╭─────────────────────────────────────────────────────────────────────────────╮",
 		"│ Bash command                                                                │",
@@ -250,12 +250,12 @@ func TestRealWorldPipeCharacterIssue(t *testing.T) {
 	// Get the actual captured message
 	actualMessage := robot.GetCapturedMessage()
 	t.Logf("REAL WORLD ISSUE MESSAGE:\n%s", actualMessage)
-	
+
 	// Check if any pipe characters appear anywhere in the message
 	if strings.Contains(actualMessage, "│") {
 		t.Errorf("❌ Pipe characters still found in message!\nFull message:\n%s", actualMessage)
 	}
-	
+
 	// Check specific problematic patterns from user report
 	if strings.Contains(actualMessage, "Bash command                                                                │") {
 		t.Errorf("❌ Command type line contains pipe characters!\nMessage: %s", actualMessage)
@@ -311,3 +311,47 @@ func TestCountdownMessagePositionWithAppRobot(t *testing.T) {
 	t.Logf("Countdown message correctly positioned at top")
 }
 
+func TestAutoRejectMessageWithFlag(t *testing.T) {
+	// Test AutoRejectMessage content using --auto-reject flag (no cheating!)
+	realDialogLines := []string{
+		"⏺ Bash(rm dangerous-file)",
+		"  ⎿  Running hook PreToolUse:Bash...",
+		"  ⎿  Running…",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────╮",
+		"│ Bash command                                                                │",
+		"│                                                                             │",
+		"│   rm dangerous-file                                                         │",
+		"│   Remove dangerous file                                                     │",
+		"│                                                                             │",
+		"│ Do you want to proceed?                                                     │",
+		"│ ❯ 1. Yes                                                                    │",
+		"│   2. No                                                                     │",
+		"╰─────────────────────────────────────────────────────────────────────────────╯",
+	}
+
+	// Store original flag value to restore later
+	originalAutoReject := *autoReject
+	defer func() { *autoReject = originalAutoReject }()
+
+	// Enable --auto-reject flag to trigger automatic rejection
+	*autoReject = true
+
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(realDialogLines...)
+
+	// Wait for auto-reject goroutines to complete
+	// AutoRejectProcessDelayMs = 500, AutoRejectChoiceDelayMs = 500, AutoRejectCRDelayMs = 400
+	time.Sleep(1500 * time.Millisecond) // Wait longer for all delays
+	
+	// Test terminal output contains AutoRejectMessage content
+	terminalOutput := robot.GetTerminalOutput()
+	t.Logf("Terminal output length: %d, content: %q", len(terminalOutput), terminalOutput)
+
+	// Verify AutoRejectMessage content appears in terminal output
+	robot.AssertTerminalContains("automatically rejected").
+		AssertTerminalContains("Task tools").
+		AssertTerminalContains("restart")
+
+	t.Logf("AutoRejectMessage correctly sent via --auto-reject flag")
+}
