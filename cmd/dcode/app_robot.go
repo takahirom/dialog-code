@@ -177,3 +177,33 @@ func (r *AppRobot) GetCapturedMessageWithoutTimestamp() string {
 	}
 	return actualMessage
 }
+
+// SetAutoRejectWait sets the auto-reject timeout for testing
+// This allows AppRobot to test auto-reject functionality
+func (r *AppRobot) SetAutoRejectWait(seconds int) *AppRobot {
+	// TODO: Add mutex protection for thread-safe access to global autoRejectWait
+	*autoRejectWait = seconds
+	return r
+}
+
+// TriggerAutoReject triggers auto-reject functionality with the configured timeout
+func (r *AppRobot) TriggerAutoReject(bestChoice string) *AppRobot {
+	// Set up the handler's app state with the captured data
+	handler := r.app.handler
+	
+	// Trigger auto-reject dialog
+	handler.sendAutoRejectWithWait(bestChoice)
+	
+	// Give goroutines time to complete
+	// TODO: Replace magic sleep value with named constant
+	time.Sleep(100 * time.Millisecond)
+	
+	return r
+}
+
+// RestoreAutoRejectWait restores the original auto-reject timeout (for cleanup)
+func (r *AppRobot) RestoreAutoRejectWait(originalTimeout int) *AppRobot {
+	// TODO: Add mutex protection for thread-safe access to global autoRejectWait
+	*autoRejectWait = originalTimeout
+	return r
+}

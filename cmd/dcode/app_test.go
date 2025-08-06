@@ -261,3 +261,53 @@ func TestRealWorldPipeCharacterIssue(t *testing.T) {
 		t.Errorf("❌ Command type line contains pipe characters!\nMessage: %s", actualMessage)
 	}
 }
+
+func TestCountdownMessagePositionWithAppRobot(t *testing.T) {
+	// Test that countdown message appears at the top using AppRobot pattern
+	// This test verifies the UX improvement: "This will auto-reject in X seconds..." should appear at dialog top
+	realDialogLines := []string{
+		"⏺ Bash(rm test-file)",
+		"  ⎿  Running hook PreToolUse:Bash...",
+		"  ⎿  Running…",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────╮",
+		"│ Bash command                                                                │",
+		"│                                                                             │",
+		"│   rm test-file                                                              │",
+		"│   Remove test file                                                          │",
+		"│                                                                             │",
+		"│ Do you want to proceed?                                                     │",
+		"│ ❯ 1. Yes                                                                    │",
+		"│   2. No                                                                     │",
+		"╰─────────────────────────────────────────────────────────────────────────────╯",
+	}
+
+	// Store original timeout to restore later
+	originalTimeout := *autoRejectWait
+
+	robot := NewAppRobot(t).
+		SetAutoRejectWait(5).
+		ReceiveClaudeText(realDialogLines...).
+		AssertDialogCaptured().
+		TriggerAutoReject("1").
+		RestoreAutoRejectWait(originalTimeout)
+
+	// Get the captured message from auto-reject dialog
+	capturedMessage := robot.GetCapturedMessage()
+	t.Logf("Captured auto-reject message: %q", capturedMessage)
+
+	// Verify countdown message appears at the top
+	expectedStart := "This will auto-reject in 5 seconds..."
+	if !strings.HasPrefix(capturedMessage, expectedStart) {
+		t.Errorf("Expected dialog to start with %q, but got: %q", expectedStart, capturedMessage)
+	}
+
+	// Verify the format includes proper spacing
+	expectedPattern := "This will auto-reject in 5 seconds...\n\nTrigger text:"
+	if !strings.HasPrefix(capturedMessage, expectedPattern) {
+		t.Errorf("Expected proper formatting with countdown at top, but got: %q", capturedMessage)
+	}
+
+	t.Logf("Countdown message correctly positioned at top")
+}
+
