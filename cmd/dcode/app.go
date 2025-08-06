@@ -423,7 +423,7 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 		// Show dialog with countdown in a separate goroutine
 		go func() {
 			baseMessage := p.buildDialogMessage(p.appState.Prompt.LastLine, p.appState.Prompt.Context, p.appState.Prompt.TriggerReason)
-			countdownMsg := fmt.Sprintf("%s\n\nThis will auto-reject in %d seconds...", baseMessage, *autoRejectWait)
+			countdownMsg := fmt.Sprintf("This will auto-reject in %d seconds...\n\n%s", *autoRejectWait, baseMessage)
 			buttons := p.extractButtons()
 			defaultButton := ""
 			if len(buttons) > 0 {

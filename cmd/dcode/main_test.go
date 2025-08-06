@@ -282,3 +282,4 @@ func TestSendAutoRejectWithWait_DialogAfterTimeout(t *testing.T) {
 		t.Error("Expected some content to be written during timeout scenario")
 	}
 }
+
