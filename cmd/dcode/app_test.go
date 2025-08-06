@@ -355,3 +355,156 @@ func TestAutoRejectMessageWithFlag(t *testing.T) {
 
 	t.Logf("AutoRejectMessage correctly sent via --auto-reject flag")
 }
+
+func TestAutoRejectMessageWithCommandDetails(t *testing.T) {
+	// Test that AutoRejectMessage includes rejected command details
+	realDialogLines := []string{
+		"⏺ Bash(rm dangerous-file)",
+		"  ⎿  Running hook PreToolUse:Bash...",
+		"  ⎿  Running…",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────╮",
+		"│ Bash command                                                                │",
+		"│                                                                             │",
+		"│   rm dangerous-file                                                         │",
+		"│   Remove dangerous file for testing                                         │",
+		"│                                                                             │",
+		"│ Do you want to proceed?                                                     │",
+		"│ ❯ 1. Yes                                                                    │",
+		"│   2. No                                                                     │",
+		"╰─────────────────────────────────────────────────────────────────────────────╯",
+	}
+
+	// Store original flag value
+	originalAutoReject := *autoReject
+	defer func() { *autoReject = originalAutoReject }()
+
+	// Enable --auto-reject flag
+	*autoReject = true
+
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(realDialogLines...)
+
+	// Wait for auto-reject goroutines to complete 
+	// (AutoRejectProcessDelayMs + AutoRejectChoiceDelayMs + AutoRejectCRDelayMs + buffer)
+	autoRejectWaitTime := time.Duration(500+500+400+100) * time.Millisecond
+	time.Sleep(autoRejectWaitTime)
+
+	// Test terminal output contains command details
+	terminalOutput := robot.GetTerminalOutput()
+	t.Logf("Terminal output: %q", terminalOutput)
+
+	// Verify AutoRejectMessage includes rejected command details
+	robot.AssertTerminalContains("automatically rejected").
+		AssertTerminalContains("Rejected command:").
+		AssertTerminalContains("rm dangerous-file").
+		AssertTerminalContains("Remove dangerous file for testing")
+
+	t.Logf("AutoRejectMessage with command details test completed")
+}
+
+func TestAutoRejectMessageCleanOutput(t *testing.T) {
+	// Test that AutoRejectMessage properly cleans pipe characters and decorations
+	realDialogLines := []string{
+		"⏺ Bash(rm test-file)",
+		"  ⎿  Running hook PreToolUse:Bash...",  
+		"  ⎿  Running…",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────╮",
+		"│ Bash command                                                                │",
+		"│                                                                             │",
+		"│   rm test-file                                                              │",
+		"│   Remove test-file from directory                                           │", 
+		"│                                                                             │",
+		"│ Do you want to proceed?                                                     │",
+		"│ ❯ 1. Yes                                                                    │",
+		"│   2. No                                                                     │",
+		"╰─────────────────────────────────────────────────────────────────────────────╯",
+	}
+
+	// Store original flag value
+	originalAutoReject := *autoReject
+	defer func() { *autoReject = originalAutoReject }()
+
+	// Enable --auto-reject flag
+	*autoReject = true
+
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(realDialogLines...)
+
+	// Wait for auto-reject goroutines to complete
+	autoRejectWaitTime := time.Duration(500+500+400+100) * time.Millisecond
+	time.Sleep(autoRejectWaitTime)
+
+	// Test terminal output for clean command details
+	terminalOutput := robot.GetTerminalOutput()
+	t.Logf("Raw terminal output: %q", terminalOutput)
+
+	// Verify AutoRejectMessage should NOT contain pipe characters or decorations
+	robot.AssertTerminalContains("automatically rejected").
+		AssertTerminalContains("Rejected command:").
+		AssertTerminalContains("rm test-file").
+		AssertTerminalContains("Remove test-file from directory")
+
+	// Check for problematic characters that should be cleaned
+	if strings.Contains(terminalOutput, "│") {
+		t.Errorf("❌ PROBLEM: Terminal output contains pipe characters that should be cleaned: %q", terminalOutput)
+	}
+	
+	// Check specifically for decoration lines that start with "> "
+	lines := strings.Split(terminalOutput, "\n")
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmedLine, "> ") {
+			t.Errorf("❌ PROBLEM: Terminal output contains decoration line that should be filtered: %q", line)
+		}
+	}
+
+	t.Logf("AutoRejectMessage clean output test completed")
+}
+
+func TestAutoRejectMessageComplexDialog(t *testing.T) {
+	// Test with more complex dialog that might have decoration issues
+	complexDialogLines := []string{
+		"⏺ Bash(rm -rf /important/data)",
+		"  ⎿  Running hook PreToolUse:Bash...",
+		"  ⎿  Running…",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────╮",
+		"│ Bash command                                                                │",
+		"│                                                                             │",
+		"│   rm -rf /important/data                                                    │",
+		"│   > This will delete all files in /important/data directory                │",
+		"│   > Use with extreme caution                                                │",
+		"│                                                                             │",
+		"│ Do you want to proceed?                                                     │",
+		"│ ❯ 1. Yes                                                                    │", 
+		"│   2. No                                                                     │",
+		"│   3. Cancel and review                                                      │",
+		"╰─────────────────────────────────────────────────────────────────────────────╯",
+	}
+
+	// Store original flag value
+	originalAutoReject := *autoReject
+	defer func() { *autoReject = originalAutoReject }()
+
+	// Enable --auto-reject flag
+	*autoReject = true
+
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(complexDialogLines...)
+
+	// Wait for auto-reject goroutines to complete
+	autoRejectWaitTime := time.Duration(500+500+400+100) * time.Millisecond
+	time.Sleep(autoRejectWaitTime)
+
+	// Test terminal output
+	terminalOutput := robot.GetTerminalOutput()
+	t.Logf("Complex dialog terminal output: %q", terminalOutput)
+
+	// This might show the pipe character issue more clearly
+	robot.AssertTerminalContains("automatically rejected").
+		AssertTerminalContains("Rejected command:")
+
+	t.Logf("Complex dialog test completed - check output for decoration characters")
+}
