@@ -342,7 +342,7 @@ func TestAutoRejectMessageWithFlag(t *testing.T) {
 
 	// Wait for auto-reject goroutines to complete
 	// AutoRejectProcessDelayMs = 500, AutoRejectChoiceDelayMs = 500, AutoRejectCRDelayMs = 400
-	time.Sleep(1500 * time.Millisecond) // Wait longer for all delays
+	time.Sleep(1500 * time.Millisecond) // Wait for all delays (1400ms + buffer)
 	
 	// Test terminal output contains AutoRejectMessage content
 	terminalOutput := robot.GetTerminalOutput()
@@ -507,4 +507,138 @@ func TestAutoRejectMessageComplexDialog(t *testing.T) {
 		AssertTerminalContains("Rejected command:")
 
 	t.Logf("Complex dialog test completed - check output for decoration characters")
+}
+
+func TestAutoRejectMessageRealWorldPipeIssue(t *testing.T) {
+	// Test that reproduces the exact issue user reported where pipe appears in output
+	// User reported seeing: "rm test-file                                                                                                                          
+	//                         │
+	//                       Remove file named test-file                                                                                                           
+	//                         │"
+	
+	// Simulate exactly what user sees in their context - spaced pipe characters 
+	realWorldDialogLines := []string{
+		"⏺ Bash(rm test-file)",
+		"  ⎿  Running hook PreToolUse:Bash...",
+		"  ⎿  Running…",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────╮",
+		"│ Bash command                                                                │",
+		"│                                                                             │",
+		"│   rm test-file                                                                                                                          │", 
+		"  │",  // This is the problematic line - spaced pipe that might not be trimmed correctly
+		"│   Remove file named test-file                                                                                                           │",
+		"  │",  // Another problematic line
+		"│                                                                             │", 
+		"│ Do you want to proceed?                                                     │",
+		"│ ❯ 1. Yes                                                                    │",
+		"│   2. No                                                                     │",
+		"╰─────────────────────────────────────────────────────────────────────────────╯",
+	}
+
+	// Store original flag value
+	originalAutoReject := *autoReject
+	defer func() { *autoReject = originalAutoReject }()
+
+	// Enable --auto-reject flag
+	*autoReject = true
+
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(realWorldDialogLines...)
+
+	// Wait for auto-reject goroutines to complete
+	autoRejectWaitTime := time.Duration(500+500+400+100) * time.Millisecond
+	time.Sleep(autoRejectWaitTime)
+
+	// Test terminal output for pipe characters
+	terminalOutput := robot.GetTerminalOutput()
+	t.Logf("Real world pipe issue terminal output: %q", terminalOutput)
+
+	// This should fail if pipe characters are still present
+	robot.AssertTerminalContains("automatically rejected").
+		AssertTerminalContains("Rejected command:").
+		AssertTerminalContains("rm test-file").
+		AssertTerminalContains("Remove file named test-file")
+
+	// Check line by line for pipe characters that should be filtered out
+	lines := strings.Split(terminalOutput, "\n")
+	for i, line := range lines {
+		if strings.Contains(line, "│") {
+			t.Errorf("❌ PIPE CHARACTER FOUND at line %d: %q\nFull output: %q", i, line, terminalOutput)
+		}
+		
+		// Check for standalone pipe characters (the actual issue user reported)
+		trimmedLine := strings.TrimSpace(line)
+		if trimmedLine == "│" {
+			t.Errorf("❌ STANDALONE PIPE CHARACTER FOUND at line %d: %q", i, line)
+		}
+	}
+
+	t.Logf("Real world pipe issue test completed")
+}
+
+func TestBuildAutoRejectMessageDebug(t *testing.T) {
+	// Debug test to understand how buildAutoRejectMessage processes lines
+	testContext := []string{
+		"⏺ Bash(rm test-file)",
+		"  ⎿  Running hook PreToolUse:Bash...",
+		"  ⎿  Running…",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────╮",
+		"│ Bash command                                                                │",
+		"│                                                                             │",
+		"│   rm test-file                                                              │",
+		"  │",  // This should be filtered as empty
+		"│   Remove file named test-file                                               │",
+		"  │",  // This should be filtered as empty
+		"│                                                                             │",
+		"│ Do you want to proceed?                                                     │",
+		"│ ❯ 1. Yes                                                                    │",
+		"│   2. No                                                                     │",
+		"╰─────────────────────────────────────────────────────────────────────────────╯",
+	}
+
+	robot := NewAppRobot(t)
+	handler := robot.app.handler
+	
+	// Set up context in the handler
+	handler.appState.Prompt.Context = testContext
+	
+	// Call buildAutoRejectMessage directly and examine result
+	result := handler.buildAutoRejectMessage()
+	t.Logf("buildAutoRejectMessage result: %q", result)
+	
+	// Debug: Process each line and show what gets included
+	t.Logf("=== Processing each context line ===")
+	for i, line := range testContext {
+		isValid := isValidCommandLine(line)
+		cleanLine := strings.TrimSpace(strings.Trim(line, "│ \t"))
+		
+		t.Logf("Line %d: %q -> isValid=%t, cleanLine=%q", 
+			i, line, isValid, cleanLine)
+	}
+	
+	// Quality gate: Ensure no pipe characters leak through
+	if strings.Contains(result, "│") {
+		t.Errorf("❌ Result contains pipe characters: %q", result)
+	}
+	
+	// Quality gate: Ensure no dialog choices leak through  
+	if strings.Contains(result, "1. Yes") || strings.Contains(result, "2. No") {
+		t.Errorf("❌ Result contains dialog choices that should be filtered: %q", result)
+	}
+	
+	// Quality gate: Ensure no "Do you want to proceed" text leaks through
+	if strings.Contains(result, "Do you want to proceed") {
+		t.Errorf("❌ Result contains dialog question that should be filtered: %q", result)
+	}
+	
+	// Verify the result contains expected command details
+	if !strings.Contains(result, "rm test-file") {
+		t.Errorf("❌ Result should contain 'rm test-file' command: %q", result)
+	}
+	
+	if !strings.Contains(result, "Remove file named test-file") {
+		t.Errorf("❌ Result should contain command description: %q", result)
+	}
 }

@@ -107,7 +107,7 @@ func TestSendAutoRejectWithWait_MaxChoiceSelection(t *testing.T) {
 	handler.sendAutoRejectWithWait("1")
 
 	// Give goroutines time to complete
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Read content from temp file to verify correct choice was written
 	tmpFile.Seek(0, 0)
@@ -262,7 +262,7 @@ func TestSendAutoRejectWithWait_DialogAfterTimeout(t *testing.T) {
 	handler.sendAutoRejectWithWait("1")
 
 	// Wait longer than timeout to ensure any lingering goroutines complete
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// Verify timeout behavior occurred correctly
 	tmpFile.Seek(0, 0)

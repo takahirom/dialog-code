@@ -260,3 +260,8 @@ func GetCleanDialogMessage(prompt string, context []string, triggerReason string
 	dialogInfo := parseDialogBox(context, regexPatterns)
 	return formatCleanMessage(triggerText, timestamp, triggerReason, dialogInfo)
 }
+
+// ParseDialogBox extracts command information from dialog box context (public wrapper)
+func ParseDialogBox(context []string, regexPatterns *types.RegexPatterns) DialogBoxInfo {
+	return parseDialogBox(context, regexPatterns)
+}
