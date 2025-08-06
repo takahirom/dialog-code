@@ -30,11 +30,14 @@ const (
 	FinalDelayMs            = 500
 	PromptDuplicationSec    = 5
 	ChoiceProcessingDelayMs = 300
-	
+
 	// Auto-reject timing constants
-	AutoRejectChoiceDelayMs = 500
-	AutoRejectCRDelayMs     = 400
+	AutoRejectChoiceDelayMs  = 500
+	AutoRejectCRDelayMs      = 400
 	AutoRejectProcessDelayMs = 500
+
+	// Auto-reject message
+	AutoRejectMessage = "The command was automatically rejected. If using Task tools, please restart them. Otherwise, try a different command."
 )
 
 var (
@@ -161,15 +164,15 @@ func main() {
 
 	// Create and run the app
 	app := NewApp(ptmx, displayWriter)
-	
+
 	// Initialize dialog at application level (outside of app core)
 	simpleDialog := dialog.NewSimpleOSDialog()
-	
+
 	// Set up permission callback to use the simple dialog
 	app.SetPermissionCallback(func(message string, buttons []string, defaultButton string) string {
 		return simpleDialog.Show(message, buttons, defaultButton)
 	})
-	
+
 	if err := app.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "App error: %v\n", err)
 		os.Exit(1)

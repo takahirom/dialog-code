@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -126,7 +127,6 @@ func (r *AppRobot) AssertButtonCount(expected int) *AppRobot {
 	return r
 }
 
-
 // SetDialogChoice sets the choice that FakeDialog will return
 func (r *AppRobot) SetDialogChoice(choice string) *AppRobot {
 	r.dialog.mu.Lock()
@@ -190,14 +190,14 @@ func (r *AppRobot) SetAutoRejectWait(seconds int) *AppRobot {
 func (r *AppRobot) TriggerAutoReject(bestChoice string) *AppRobot {
 	// Set up the handler's app state with the captured data
 	handler := r.app.handler
-	
+
 	// Trigger auto-reject dialog
 	handler.sendAutoRejectWithWait(bestChoice)
-	
+
 	// Give goroutines time to complete
 	// TODO: Replace magic sleep value with named constant
 	time.Sleep(100 * time.Millisecond)
-	
+
 	return r
 }
 
@@ -205,5 +205,26 @@ func (r *AppRobot) TriggerAutoReject(bestChoice string) *AppRobot {
 func (r *AppRobot) RestoreAutoRejectWait(originalTimeout int) *AppRobot {
 	// TODO: Add mutex protection for thread-safe access to global autoRejectWait
 	*autoRejectWait = originalTimeout
+	return r
+}
+
+// GetTerminalOutput returns all content written to the terminal (tmpFile)
+func (r *AppRobot) GetTerminalOutput() string {
+	// Seek to beginning and read all content
+	r.tmpFile.Seek(0, 0)
+	buf, err := io.ReadAll(r.tmpFile)
+	if err != nil {
+		r.t.Errorf("Failed to read terminal output: %v", err)
+		return ""
+	}
+	return string(buf)
+}
+
+// AssertTerminalContains verifies terminal output contains expected text
+func (r *AppRobot) AssertTerminalContains(expectedText string) *AppRobot {
+	output := r.GetTerminalOutput()
+	if !strings.Contains(output, expectedText) {
+		r.t.Errorf("Expected terminal output to contain %q, got: %q", expectedText, output)
+	}
 	return r
 }

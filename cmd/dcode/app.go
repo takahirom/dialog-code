@@ -63,7 +63,7 @@ func NewAppWithDialog(ptmx *os.File, displayWriter io.Writer, dialogInterface Di
 	callback := func(message string, buttons []string, defaultButton string) string {
 		return dialogInterface.Show(message, buttons, defaultButton)
 	}
-	
+
 	app := &App{
 		ptmx:          ptmx,
 		handler:       NewPermissionHandler(ptmx, callback),
@@ -241,7 +241,7 @@ func NewPermissionHandlerWithDialog(ptmx *os.File, dialogInterface DialogInterfa
 	callback := func(message string, buttons []string, defaultButton string) string {
 		return dialogInterface.Show(message, buttons, defaultButton)
 	}
-	
+
 	return &PermissionHandler{
 		ptmx:               ptmx,
 		appState:           types.NewAppState(),
@@ -253,13 +253,13 @@ func NewPermissionHandlerWithDialog(ptmx *os.File, dialogInterface DialogInterfa
 }
 
 // NewPermissionHandlerWithDialogAndTimeProvider creates a handler with dialog interface and time provider
-// Deprecated: Use NewPermissionHandler with callback instead  
+// Deprecated: Use NewPermissionHandler with callback instead
 func NewPermissionHandlerWithDialogAndTimeProvider(ptmx *os.File, dialogInterface DialogInterface, timeProvider TimeProvider) *PermissionHandler {
 	// Wrap the dialog interface in a callback
 	callback := func(message string, buttons []string, defaultButton string) string {
 		return dialogInterface.Show(message, buttons, defaultButton)
 	}
-	
+
 	return &PermissionHandler{
 		ptmx:               ptmx,
 		appState:           types.NewAppState(),
@@ -272,7 +272,6 @@ func NewPermissionHandlerWithDialogAndTimeProvider(ptmx *os.File, dialogInterfac
 
 func (p *PermissionHandler) processLine(line string) {
 	cleanLine := p.patterns.StripAnsi(line)
-
 
 	// Collect context lines (always collect unless it's debug)
 	if len(strings.TrimSpace(cleanLine)) > 0 && !strings.HasPrefix(cleanLine, "[DEBUG]") {
@@ -399,7 +398,7 @@ func (p *PermissionHandler) sendAutoReject() {
 		time.Sleep(AutoRejectChoiceDelayMs * time.Millisecond)
 
 		// Now send the rejection message
-		rejectMsg := "The command was automatically rejected. If using Task tools, please restart them. Otherwise, try a different command. This may occur due to pipes or redirections."
+		rejectMsg := AutoRejectMessage
 		if err := p.writeToTerminal(rejectMsg); err != nil {
 			return
 		}
@@ -429,7 +428,7 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 			if len(buttons) > 0 {
 				defaultButton = buttons[0]
 			}
-			
+
 			var userChoice string
 			if p.permissionCallback != nil {
 				userChoice = p.permissionCallback(countdownMsg, buttons, defaultButton)
@@ -473,7 +472,7 @@ func (p *PermissionHandler) writeAutoRejectChoice(maxChoice string) {
 	time.Sleep(AutoRejectChoiceDelayMs * time.Millisecond)
 
 	// Now send the rejection message
-	rejectMsg := "The command was automatically rejected after wait period. If using Task tools, please restart them. Otherwise, try a different command."
+	rejectMsg := AutoRejectMessage
 	if err := p.writeToTerminal(rejectMsg); err != nil {
 		return
 	}
@@ -513,7 +512,7 @@ func (p *PermissionHandler) showDialog(bestChoice string) {
 		if len(buttons) > 0 {
 			defaultButton = buttons[0]
 		}
-		
+
 		var userChoice string
 		if p.permissionCallback != nil {
 			userChoice = p.permissionCallback(message, buttons, defaultButton)
@@ -547,11 +546,11 @@ func findMaxRejectChoice(choices map[string]string) string {
 
 // isUserInputPattern checks if the output contains patterns indicating user input
 func isUserInputPattern(output string) bool {
-	return strings.Contains(output, "1") || 
-		   strings.Contains(output, "2") || 
-		   strings.Contains(output, "3") ||
-		   strings.Contains(output, "\n") || 
-		   strings.Contains(output, "\r\n")
+	return strings.Contains(output, "1") ||
+		strings.Contains(output, "2") ||
+		strings.Contains(output, "3") ||
+		strings.Contains(output, "\n") ||
+		strings.Contains(output, "\r\n")
 }
 
 // Run starts the application
@@ -611,4 +610,3 @@ func (a *App) Run() error {
 
 	return nil
 }
-
