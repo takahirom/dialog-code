@@ -36,8 +36,8 @@ const (
 	AutoRejectCRDelayMs      = 400
 	AutoRejectProcessDelayMs = 500
 
-	// Auto-reject message
-	AutoRejectMessage = "The command was automatically rejected. If using Task tools, please restart them. Otherwise, try a different command."
+	// Auto-reject base message
+	AutoRejectBaseMessage = "The command was automatically rejected. If using Task tools, please restart them. Otherwise, try a different command."
 )
 
 var (

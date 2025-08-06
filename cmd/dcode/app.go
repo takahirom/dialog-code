@@ -398,7 +398,7 @@ func (p *PermissionHandler) sendAutoReject() {
 		time.Sleep(AutoRejectChoiceDelayMs * time.Millisecond)
 
 		// Now send the rejection message
-		rejectMsg := AutoRejectMessage
+		rejectMsg := p.buildAutoRejectMessage()
 		if err := p.writeToTerminal(rejectMsg); err != nil {
 			return
 		}
@@ -462,6 +462,71 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 	}()
 }
 
+// Dialog parsing constants
+const (
+	DialogQuestionPattern = "Do you want to proceed"
+	DialogChoicePattern   = "❯"
+	DialogCommandPattern  = "command"
+)
+
+// isValidCommandLine checks if a line contains valid command information
+func isValidCommandLine(line string) bool {
+	cleanLine := strings.Trim(line, "│ \t")
+	cleanLine = strings.TrimSpace(cleanLine)
+	
+	if cleanLine == "" {
+		return false
+	}
+	
+	// Skip dialog UI elements and decorations
+	excludePatterns := []string{
+		DialogQuestionPattern,
+		DialogChoicePattern,
+		DialogCommandPattern,
+	}
+	
+	// Check for patterns that should be filtered anywhere in the line
+	for _, pattern := range excludePatterns {
+		if strings.Contains(cleanLine, pattern) {
+			return false
+		}
+	}
+	
+	// Check for patterns that should be filtered at line start
+	if strings.HasPrefix(cleanLine, ">") || strings.HasPrefix(cleanLine, ".") {
+		return false
+	}
+	
+	return true
+}
+
+// buildAutoRejectMessage creates auto-reject message with command details
+func (p *PermissionHandler) buildAutoRejectMessage() string {
+	// Get command details from dialog context
+	if len(p.appState.Prompt.Context) > 0 {
+		var builder strings.Builder
+		
+		for _, line := range p.appState.Prompt.Context {
+			// Look for command information (skip dialog box decorations)
+			if strings.Contains(line, "│") && isValidCommandLine(line) {
+				cleanLine := strings.Trim(line, "│ \t")
+				cleanLine = strings.TrimSpace(cleanLine)
+				
+				if builder.Len() > 0 {
+					builder.WriteString("\n")
+				}
+				builder.WriteString(cleanLine)
+			}
+		}
+		
+		if builder.Len() > 0 {
+			return fmt.Sprintf("Rejected command:\n%s\n\n%s", builder.String(), AutoRejectBaseMessage)
+		}
+	}
+	
+	return AutoRejectBaseMessage
+}
+
 func (p *PermissionHandler) writeAutoRejectChoice(maxChoice string) {
 	// Send the max choice number without newline (like dialog mode)
 	if err := p.writeToTerminal(maxChoice); err != nil {
@@ -472,7 +537,7 @@ func (p *PermissionHandler) writeAutoRejectChoice(maxChoice string) {
 	time.Sleep(AutoRejectChoiceDelayMs * time.Millisecond)
 
 	// Now send the rejection message
-	rejectMsg := AutoRejectMessage
+	rejectMsg := p.buildAutoRejectMessage()
 	if err := p.writeToTerminal(rejectMsg); err != nil {
 		return
 	}
