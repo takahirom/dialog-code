@@ -2,9 +2,8 @@
 
 A Go wrapper for Claude Code that adds macOS permission dialog handling and seamless option passthrough.
 
-**Vibe coded** - This project was created with AI assistance.
+<img width="1552" height="1232" alt="image" src="https://github.com/user-attachments/assets/51e4a423-7365-43ee-a93f-c2b319768a26" />
 
-![image](https://github.com/user-attachments/assets/b217ab55-0586-40ec-bc09-82d37e9b3b19)
 
 ## ✨ Features
 
