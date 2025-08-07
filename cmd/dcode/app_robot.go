@@ -71,6 +71,13 @@ func (r *AppRobot) AssertDialogCaptured() *AppRobot {
 	return r
 }
 
+func (r *AppRobot) AssertNoDialogCaptured() *AppRobot {
+	if r.dialog.GetCapturedMessage() != "" {
+		r.t.Errorf("Expected no dialog to be captured, but got: %q", r.dialog.GetCapturedMessage())
+	}
+	return r
+}
+
 // AssertDialogTextContains verifies dialog message contains expected text
 func (r *AppRobot) AssertDialogTextContains(expectedText string) *AppRobot {
 	capturedMessage := r.dialog.GetCapturedMessage()

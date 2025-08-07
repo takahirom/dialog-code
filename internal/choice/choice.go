@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/takahirom/dialog-code/internal/debug"
 	"github.com/takahirom/dialog-code/internal/types"
 )
 
@@ -39,6 +40,7 @@ func GetBestChoice(choices map[string]string, regexPatterns *types.RegexPatterns
 	}
 
 	// Ultimate fallback
+	debug.Printf("[DEBUG] GetBestChoice: No valid choice found in %v, returning default \"1\"\n", choices)
 	return "1"
 }
 

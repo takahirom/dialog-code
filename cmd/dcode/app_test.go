@@ -577,6 +577,110 @@ func TestAutoRejectMessageRealWorldPipeIssue(t *testing.T) {
 	t.Logf("Real world pipe issue test completed")
 }
 
+func TestNonDialogDoYouWantMessage(t *testing.T) {
+	// Test that "Do you want" text outside dialog box does NOT trigger "1" input
+	// This reproduces the issue where plain text with "Do you want" causes "1" to be sent to terminal
+	// Even though there's no permission dialog
+	
+	nonDialogLines := []string{
+		"⏺ Edit command rejected",
+		"Rejected command:",
+		"Do you want to make this edit to DefaultFluffyByteIsPlayingAdapter.kt?",
+		"",
+		"The command was automatically rejected. If using Task tools, please restart them. Otherwise, try a different command.",
+	}
+	
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(nonDialogLines...).
+		AssertNoDialogCaptured()
+	
+	// Verify that no "1" was written to terminal
+	terminalOutput := robot.GetTerminalOutput()
+	if strings.Contains(terminalOutput, "1") {
+		t.Errorf("Terminal output contains '1' when it shouldn't: %q", terminalOutput)
+	}
+	
+	// Verify no dialog was detected
+	if robot.app.handler.appState.Prompt.CollectedChoices != nil && len(robot.app.handler.appState.Prompt.CollectedChoices) > 0 {
+		t.Errorf("Dialog choices were collected when there was no dialog: %v", 
+			robot.app.handler.appState.Prompt.CollectedChoices)
+	}
+	
+	t.Logf("Non-dialog 'Do you want' text correctly ignored")
+}
+
+func TestDoYouWantWithInputBox(t *testing.T) {
+	// Test that "Do you want" text followed by an input box (not a dialog) doesn't trigger "1" input
+	// This simulates the case where there's always an input box at the bottom
+	
+	inputBoxLines := []string{
+		"⏺ Edit command rejected",
+		"Rejected command:",
+		"Do you want to make this edit to DefaultFluffyByteIsPlayingAdapter.kt?",
+		"",
+		"The command was automatically rejected. If using Task tools, please restart them. Otherwise, try a different command.",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮",
+		"│ >                                                                                                                                                       │",
+		"╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯",
+		"  ⏵⏵ auto-accept edits on (shift+tab to cycle)                                                                                                          ◯",
+	}
+	
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(inputBoxLines...).
+		AssertNoDialogCaptured()
+	
+	// Verify that no "1" was written to terminal
+	terminalOutput := robot.GetTerminalOutput()
+	if strings.Contains(terminalOutput, "1") {
+		t.Errorf("Terminal output contains '1' when it shouldn't: %q", terminalOutput)
+	}
+	
+	// Verify this input box is not treated as a permission dialog
+	if robot.app.handler.appState.Prompt.CollectedChoices != nil && len(robot.app.handler.appState.Prompt.CollectedChoices) > 0 {
+		t.Errorf("Input box was incorrectly treated as dialog: %v", 
+			robot.app.handler.appState.Prompt.CollectedChoices)
+	}
+	
+	t.Logf("'Do you want' with input box correctly handled (no '1' input)")
+}
+
+func TestMixedContentWithDoYouWant(t *testing.T) {
+	// Test that "Do you want" in regular text doesn't interfere with actual dialogs
+	
+	mixedLines := []string{
+		"Claude: Do you want me to explain this code?",
+		"Let me show you an example.",
+		"",
+		"⏺ Bash(ls -la)",
+		"  ⎿  Running…",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────╮",
+		"│ Bash command                                                                │",
+		"│                                                                             │",
+		"│   ls -la                                                                    │",
+		"│   List all files with details                                               │",
+		"│                                                                             │",
+		"│ Do you want to proceed?                                                     │",
+		"│ ❯ 1. Yes                                                                    │",
+		"│   2. No                                                                     │",
+		"╰─────────────────────────────────────────────────────────────────────────────╯",
+	}
+	
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(mixedLines...).
+		AssertDialogCaptured().
+		AssertButtonCount(2)
+	
+	// Verify only the actual dialog was captured, not the plain text "Do you want"
+	capturedMessage := robot.GetCapturedMessage()
+	if strings.Contains(capturedMessage, "Do you want me to explain") {
+		t.Errorf("Plain text 'Do you want' was incorrectly captured: %q", capturedMessage)
+	}
+	
+	t.Logf("Mixed content correctly handled")
+}
+
 func TestBuildAutoRejectMessageDebug(t *testing.T) {
 	// Debug test to understand how buildAutoRejectMessage processes lines
 	testContext := []string{
