@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/takahirom/dialog-code/internal/choice"
+	"github.com/takahirom/dialog-code/internal/debug"
 	"github.com/takahirom/dialog-code/internal/dialog"
 	"github.com/takahirom/dialog-code/internal/types"
 )
@@ -50,9 +51,12 @@ func (a *App) SetPermissionCallback(callback PermissionCallback) {
 // requestPermission is the internal method that calls the external callback
 func (a *App) requestPermission(message string, buttons []string, defaultButton string) string {
 	if a.permissionCallback != nil {
-		return a.permissionCallback(message, buttons, defaultButton)
+		result := a.permissionCallback(message, buttons, defaultButton)
+		debug.Printf("[DEBUG] App.requestPermission callback returned: %q\n", result)
+		return result
 	}
 	// Fallback behavior if no callback is set
+	debug.Printf("[DEBUG] App.requestPermission no callback, returning default: \"1\"\n")
 	return "1" // Default to first button
 }
 
@@ -286,8 +290,8 @@ func (p *PermissionHandler) processLine(line string) {
 		return
 	}
 
-	// Check for permission prompt start
-	if p.patterns.Permit.MatchString(line) {
+	// Check for permission prompt start - but only if we're inside a dialog box
+	if p.patterns.Permit.MatchString(line) && p.isInsideDialogBox(line) {
 		// Create a context-aware identifier for this prompt
 		// Include recent context lines to distinguish between different commands
 		contextIdentifier := ""
@@ -315,6 +319,31 @@ func (p *PermissionHandler) processLine(line string) {
 	if p.appState.Prompt.Started {
 		p.processChoice(line, cleanLine)
 	}
+}
+
+// isInsideDialogBox checks if the current line is inside a dialog box
+func (p *PermissionHandler) isInsideDialogBox(line string) bool {
+	// Check if line contains dialog box borders
+	if strings.Contains(line, "│") {
+		return true
+	}
+	
+	// Check recent context for dialog box start
+	for i := len(p.contextLines) - 1; i >= 0 && i > len(p.contextLines)-5; i-- {
+		if i < 0 {
+			break
+		}
+		contextLine := p.contextLines[i]
+		if strings.Contains(contextLine, "╭") {
+			return true
+		}
+		if strings.Contains(contextLine, "╰") {
+			// Found dialog box end, we're outside
+			return false
+		}
+	}
+	
+	return false
 }
 
 func (p *PermissionHandler) shouldSkipLine(cleanLine string) bool {
@@ -449,7 +478,7 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 		case userChoice := <-userChoiceChan:
 			// User made a choice before timeout
 			close(done)
-			if err := p.writeToTerminal(userChoice); err != nil {
+				if err := p.writeToTerminal(userChoice); err != nil {
 				return
 			}
 			p.handleDialogCooldown()
@@ -599,6 +628,7 @@ func (p *PermissionHandler) showDialog(bestChoice string) {
 		}
 
 		if userChoice != "" {
+			debug.Printf("[DEBUG] Writing to terminal: %q (from showDialog)\n", userChoice)
 			if err := p.writeToTerminal(userChoice); err != nil {
 				return
 			}

@@ -8,4 +8,7 @@ go_library(
     ],
     importpath = "github.com/takahirom/dialog-code/internal/dialog",
     visibility = ["//:__subpackages__"],
+    deps = [
+        "//internal/debug",
+    ],
 )

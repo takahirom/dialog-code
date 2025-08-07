@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+
+	"github.com/takahirom/dialog-code/internal/debug"
 )
 
 // SimpleOSDialog provides pure OS dialog functionality without message processing
@@ -52,9 +54,9 @@ func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []stri
 	output, err := cmd.Output()
 	if err != nil {
 		// AppleScript execution failed, default to first button (safe choice)
+		debug.Printf("[DEBUG] SimpleOSDialog: AppleScript error: %v, returning \"1\"\n", err)
 		return "1"
 	}
-	
 	
 	// Parse the result to find which button was clicked
 	return d.parseAppleScriptResult(string(output), buttons)
@@ -85,5 +87,6 @@ func (d *SimpleOSDialog) parseAppleScriptResult(output string, buttons []string)
 	}
 	
 	// Default to first button if parsing fails
+	debug.Printf("[DEBUG] SimpleOSDialog: No button match found, returning default \"1\"\n")
 	return "1"
 }
