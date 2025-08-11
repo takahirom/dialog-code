@@ -746,3 +746,79 @@ func TestBuildAutoRejectMessageDebug(t *testing.T) {
 		t.Errorf("❌ Result should contain command description: %q", result)
 	}
 }
+
+func TestSerenaMCPDialogDetection(t *testing.T) {
+	// Test that serena MCP tool with parameters shows proper dialog content
+	// This reproduces the actual pattern from test_data.txt with even more content
+	
+	serenaMCPLines := []string{
+		"⏺ serena - search_for_pattern (MCP)(substring_pattern: \"kotlin.*=.*1\\.\", relative_path: \"gradle/libs.versions.toml\")",
+		"",
+		"╭─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮",
+		"│ Tool use                                                                                                                            │",
+		"│                                                                                                                                     │",
+		"│   serena - search_for_pattern(substring_pattern: \"kotlin.*=.*1\\.\", relative_path: \"gradle/libs.versions.toml\") (MCP)               │",
+		"│   Offers a flexible search for arbitrary patterns in the codebase, including the                                                    │",
+		"│   possibility to search in non-code files.                                                                                          │",
+		"│   Generally, symbolic operations like find_symbol or find_referencing_symbols                                                       │",
+		"│   should be preferred if you know which symbols you are looking for.                                                                │",
+		"│                                                                                                                                     │",
+		"│   Pattern Matching Logic:                                                                                                           │",
+		"│       For each match, the returned result will contain the full lines where the                                                     │",
+		"│       substring pattern is found, as well as optionally some lines before and after it. The pattern will be compiled with           │",
+		"│       DOTALL, meaning that the dot will match all characters including newlines.                                                    │",
+		"│       This also means that it never makes sense to have .* at the beginning or end of the pattern,                                  │",
+		"│       but it may make sense to have it in the middle for complex patterns.                                                          │",
+		"│       If a pattern matches multiple lines, all those lines will be part of the match.                                               │",
+		"│       Be careful to not use greedy quantifiers unnecessarily, it is usually better to use non-greedy quantifiers like .*? to avoid  │",
+		"│       matching too much content.                                                                                                    │",
+		"│                                                                                                                                     │",
+		"│   File Selection Logic:                                                                                                             │",
+		"│       The files in which the search is performed can be restricted very flexibly.                                                   │",
+		"│       Using `restrict_search_to_code_files` is useful if you are only interested in code symbols (i.e., those                       │",
+		"│       symbols that can be manipulated with symbolic tools like find_symbol).                                                        │",
+		"│       You can also restrict the search to a specific file or directory,                                                             │",
+		"│       and provide glob patterns to include or exclude certain files on top of that.                                                 │",
+		"│       The globs are matched against relative file paths from the project root (not to the `relative_path` parameter that            │",
+		"│       is used to further restrict the search).                                                                                      │",
+		"│       Smartly combining the various restrictions allows you to perform very targeted searches. Returns A mapping of file paths to    │",
+		"│       lists of matched consecutive lines.                                                                                           │",
+		"│                                                                                                                                     │",
+		"│ Do you want to proceed?                                                                                                             │",
+		"│ ❯ 1. Yes                                                                                                                            │",
+		"│   2. No, change the command                                                                                                         │",
+		"│   3. No, and tell Claude what to do differently (esc)                                                                               │",
+		"╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯",
+	}
+	
+	robot := NewAppRobot(t).
+		ReceiveClaudeText(serenaMCPLines...).
+		AssertDialogCaptured().
+		AssertDialogTextContains("Do you want to proceed?").
+		AssertDialogTextContains("Tool use").
+		AssertButtonCount(3)
+	
+	// Check that trigger text is properly captured
+	capturedMessage := robot.GetCapturedMessage()
+	t.Logf("Captured message for serena MCP: %q", capturedMessage)
+	
+	// Verify trigger text exists and is not empty
+	if !strings.Contains(capturedMessage, "Trigger text:") {
+		t.Errorf("❌ Missing 'Trigger text:' in captured message")
+	}
+	
+	// The captured message should include the MCP tool information
+	if !strings.Contains(capturedMessage, "serena - search_for_pattern") {
+		t.Errorf("❌ Missing MCP tool name in captured message")
+	}
+	
+	// Check that important content is included (tool description)
+	if !strings.Contains(capturedMessage, "Offers a flexible search") {
+		t.Errorf("❌ Missing tool description in captured message")
+	}
+	
+	// Parameters should be included
+	if !strings.Contains(capturedMessage, "substring_pattern") || !strings.Contains(capturedMessage, "relative_path") {
+		t.Errorf("❌ Missing tool parameters in captured message") 
+	}
+}

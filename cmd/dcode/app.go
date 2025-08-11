@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/takahirom/dialog-code/internal/choice"
-	"github.com/takahirom/dialog-code/internal/debug"
 	"github.com/takahirom/dialog-code/internal/dialog"
 	"github.com/takahirom/dialog-code/internal/types"
 )
@@ -17,7 +16,7 @@ import (
 // Constants for configuration
 const (
 	PTYBufferSize     = 1024 // Buffer size for PTY reading
-	ContextBufferSize = 20   // Buffer size for context lines
+	ContextBufferSize = 50   // Buffer size for context lines
 )
 
 // PermissionCallback defines the callback for permission requests
@@ -51,12 +50,9 @@ func (a *App) SetPermissionCallback(callback PermissionCallback) {
 // requestPermission is the internal method that calls the external callback
 func (a *App) requestPermission(message string, buttons []string, defaultButton string) string {
 	if a.permissionCallback != nil {
-		result := a.permissionCallback(message, buttons, defaultButton)
-		debug.Printf("[DEBUG] App.requestPermission callback returned: %q\n", result)
-		return result
+		return a.permissionCallback(message, buttons, defaultButton)
 	}
 	// Fallback behavior if no callback is set
-	debug.Printf("[DEBUG] App.requestPermission no callback, returning default: \"1\"\n")
 	return "1" // Default to first button
 }
 
@@ -478,7 +474,7 @@ func (p *PermissionHandler) sendAutoRejectWithWait(bestChoice string) {
 		case userChoice := <-userChoiceChan:
 			// User made a choice before timeout
 			close(done)
-				if err := p.writeToTerminal(userChoice); err != nil {
+			if err := p.writeToTerminal(userChoice); err != nil {
 				return
 			}
 			p.handleDialogCooldown()
@@ -628,7 +624,6 @@ func (p *PermissionHandler) showDialog(bestChoice string) {
 		}
 
 		if userChoice != "" {
-			debug.Printf("[DEBUG] Writing to terminal: %q (from showDialog)\n", userChoice)
 			if err := p.writeToTerminal(userChoice); err != nil {
 				return
 			}
