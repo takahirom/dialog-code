@@ -33,7 +33,7 @@ const (
 
 	// Auto-reject timing constants
 	AutoRejectChoiceDelayMs  = 500
-	AutoRejectCRDelayMs      = 400
+	AutoRejectCRDelayMs      = 600
 	AutoRejectProcessDelayMs = 500
 
 	// Auto-reject base message
