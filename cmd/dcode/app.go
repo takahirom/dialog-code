@@ -287,7 +287,8 @@ func (p *PermissionHandler) processLine(line string) {
 	}
 
 	// Check for permission prompt start - but only if we're inside a dialog box
-	if p.patterns.Permit.MatchString(line) && p.isInsideDialogBox(line) {
+	// AND not in an input box (which has the "│ >" pattern)
+	if p.patterns.Permit.MatchString(line) && p.isInsideDialogBox(line) && !p.isInputBox(line) {
 		// Create a context-aware identifier for this prompt
 		// Include recent context lines to distinguish between different commands
 		contextIdentifier := ""
@@ -336,6 +337,32 @@ func (p *PermissionHandler) isInsideDialogBox(line string) bool {
 		if strings.Contains(contextLine, "╰") {
 			// Found dialog box end, we're outside
 			return false
+		}
+	}
+	
+	return false
+}
+
+// isInputBox checks if the current context indicates an input box
+// Input boxes have the pattern "│ >" which is different from dialog choices "│ ❯"
+func (p *PermissionHandler) isInputBox(line string) bool {
+	// Check if current line or recent context has input box pattern
+	if strings.Contains(line, "│ >") || strings.Contains(line, "> Rejected") {
+		return true
+	}
+	
+	// Check recent context (up to 3 lines back) for input box patterns
+	const contextLinesToCheck = 3
+	contextLen := len(p.contextLines)
+	startIdx := contextLen - contextLinesToCheck
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	
+	for i := startIdx; i < contextLen; i++ {
+		if strings.Contains(p.contextLines[i], "│ >") || 
+		   strings.Contains(p.contextLines[i], "> Rejected") {
+			return true
 		}
 	}
 	
