@@ -94,9 +94,10 @@ func (d *SimpleOSDialog) parseAppleScriptResult(output string, buttons []string)
 		}
 	}
 	
-	// Default to first button if parsing fails
-	debug.Printf("[DEBUG] SimpleOSDialog: No button match found, returning default \"1\"\n")
-	return "1"
+	// Default to last button if parsing fails (most restrictive choice)
+	maxChoice := fmt.Sprintf("%d", len(buttons))
+	debug.Printf("[DEBUG] SimpleOSDialog: No button match found, returning last button \"%s\"\n", maxChoice)
+	return maxChoice
 }
 
 // executeChooseFromListDialog executes AppleScript choose from list for many buttons
@@ -111,7 +112,18 @@ func (d *SimpleOSDialog) executeChooseFromListDialog(message string, buttons []s
 	// Build default selection
 	defaultSelection := ""
 	if defaultButton != "" {
-		defaultSelection = fmt.Sprintf(` default items {"%s"}`, d.escapeForAppleScript(defaultButton))
+		valid := false
+		for _, b := range buttons {
+			if b == defaultButton {
+				valid = true
+				break
+			}
+		}
+		if valid {
+			defaultSelection = fmt.Sprintf(` default items {"%s"}`, d.escapeForAppleScript(defaultButton))
+		} else {
+			debug.Printf("[DEBUG] SimpleOSDialog: defaultButton %q not in list; omitting default items\n", defaultButton)
+		}
 	}
 	
 	// Build AppleScript command for choose from list
@@ -136,7 +148,7 @@ func (d *SimpleOSDialog) executeChooseFromListDialog(message string, buttons []s
 
 // parseChooseFromListResult parses choose from list output to determine which button was selected
 func (d *SimpleOSDialog) parseChooseFromListResult(output string, buttons []string) string {
-	// choose from list returns the selected item directly, or "false" if cancelled
+	// choose from list returns selected items (often {"Label"}) or "false" if cancelled
 	output = strings.TrimSpace(output)
 	
 	if output == "false" {
@@ -145,9 +157,21 @@ func (d *SimpleOSDialog) parseChooseFromListResult(output string, buttons []stri
 		return fmt.Sprintf("%d", len(buttons))
 	}
 	
+	// Normalize: strip surrounding braces, pick first item if multiple, strip quotes
+	normalized := output
+	if strings.HasPrefix(normalized, "{") && strings.HasSuffix(normalized, "}") {
+		normalized = strings.TrimSpace(normalized[1 : len(normalized)-1])
+	}
+	// If multiple items (shouldn't happen with default settings), take the first
+	if idx := strings.Index(normalized, ","); idx >= 0 {
+		normalized = normalized[:idx]
+	}
+	normalized = strings.TrimSpace(normalized)
+	normalized = strings.Trim(normalized, `"`)
+	
 	// Find the matching button and return its index (1-based)
 	for i, button := range buttons {
-		if button == output {
+		if button == normalized {
 			return fmt.Sprintf("%d", i+1)
 		}
 	}
