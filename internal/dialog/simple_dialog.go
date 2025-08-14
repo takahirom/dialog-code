@@ -24,8 +24,14 @@ func (d *SimpleOSDialog) Show(message string, buttons []string, defaultButton st
 		defaultButton = "OK"
 	}
 
-	// Execute AppleScript dialog
-	return d.executeAppleScriptDialog(message, buttons, defaultButton)
+	// Choose between dialog types based on button count
+	if len(buttons) > 3 {
+		debug.Printf("[DEBUG] SimpleOSDialog: Using choose from list for %d buttons\n", len(buttons))
+		return d.executeChooseFromListDialog(message, buttons, defaultButton)
+	} else {
+		debug.Printf("[DEBUG] SimpleOSDialog: Using display dialog for %d buttons\n", len(buttons))
+		return d.executeAppleScriptDialog(message, buttons, defaultButton)
+	}
 }
 
 // executeAppleScriptDialog executes the actual AppleScript dialog
@@ -48,14 +54,16 @@ func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []stri
 	script := fmt.Sprintf(`display dialog "%s" with title "Claude Permission" buttons {%s} default button "%s"`,
 		escapedMessage, buttonsStr, d.escapeForAppleScript(defaultButton))
 	
+	debug.Printf("[DEBUG] SimpleOSDialog: Executing AppleScript: %s\n", script)
 	
 	// Execute AppleScript
 	cmd := exec.Command("osascript", "-e", script)
 	output, err := cmd.Output()
 	if err != nil {
-		// AppleScript execution failed, default to first button (safe choice)
-		debug.Printf("[DEBUG] SimpleOSDialog: AppleScript error: %v, returning \"1\"\n", err)
-		return "1"
+		// AppleScript execution failed, default to last button (most restrictive choice)
+		maxChoice := fmt.Sprintf("%d", len(buttons))
+		debug.Printf("[DEBUG] SimpleOSDialog: AppleScript error: %v, returning \"%s\"\n", err, maxChoice)
+		return maxChoice
 	}
 	
 	// Parse the result to find which button was clicked
@@ -89,4 +97,62 @@ func (d *SimpleOSDialog) parseAppleScriptResult(output string, buttons []string)
 	// Default to first button if parsing fails
 	debug.Printf("[DEBUG] SimpleOSDialog: No button match found, returning default \"1\"\n")
 	return "1"
+}
+
+// executeChooseFromListDialog executes AppleScript choose from list for many buttons
+func (d *SimpleOSDialog) executeChooseFromListDialog(message string, buttons []string, defaultButton string) string {
+	// Build button list for AppleScript
+	var buttonStrings []string
+	for _, button := range buttons {
+		buttonStrings = append(buttonStrings, fmt.Sprintf(`"%s"`, d.escapeForAppleScript(button)))
+	}
+	buttonsStr := strings.Join(buttonStrings, ",")
+	
+	// Build default selection
+	defaultSelection := ""
+	if defaultButton != "" {
+		defaultSelection = fmt.Sprintf(` default items {"%s"}`, d.escapeForAppleScript(defaultButton))
+	}
+	
+	// Build AppleScript command for choose from list
+	script := fmt.Sprintf(`choose from list {%s} with title "Claude Permission" with prompt "%s"%s`,
+		buttonsStr, d.escapeForAppleScript(message), defaultSelection)
+	
+	debug.Printf("[DEBUG] SimpleOSDialog: Executing choose from list: %s\n", script)
+	
+	// Execute AppleScript
+	cmd := exec.Command("osascript", "-e", script)
+	output, err := cmd.Output()
+	if err != nil {
+		// Choose from list execution failed, default to last button (most restrictive choice)
+		maxChoice := fmt.Sprintf("%d", len(buttons))
+		debug.Printf("[DEBUG] SimpleOSDialog: Choose from list error: %v, returning \"%s\"\n", err, maxChoice)
+		return maxChoice
+	}
+	
+	// Parse the result to find which button was selected
+	return d.parseChooseFromListResult(string(output), buttons)
+}
+
+// parseChooseFromListResult parses choose from list output to determine which button was selected
+func (d *SimpleOSDialog) parseChooseFromListResult(output string, buttons []string) string {
+	// choose from list returns the selected item directly, or "false" if cancelled
+	output = strings.TrimSpace(output)
+	
+	if output == "false" {
+		// User cancelled, return last button (most restrictive)
+		debug.Printf("[DEBUG] SimpleOSDialog: User cancelled choose from list, returning last button\n")
+		return fmt.Sprintf("%d", len(buttons))
+	}
+	
+	// Find the matching button and return its index (1-based)
+	for i, button := range buttons {
+		if button == output {
+			return fmt.Sprintf("%d", i+1)
+		}
+	}
+	
+	// Default to last button if no match found (most restrictive)
+	debug.Printf("[DEBUG] SimpleOSDialog: No button match found in choose from list, returning last button\n")
+	return fmt.Sprintf("%d", len(buttons))
 }
