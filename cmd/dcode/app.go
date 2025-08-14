@@ -347,7 +347,8 @@ func (p *PermissionHandler) isInsideDialogBox(line string) bool {
 // Input boxes have the pattern "│ >" which is different from dialog choices "│ ❯"
 func (p *PermissionHandler) isInputBox(line string) bool {
 	// Check if current line or recent context has input box pattern
-	if strings.Contains(line, "│ >") || strings.Contains(line, "> Rejected") {
+	// Note: Claude Code uses non-breaking space (U+00A0) around the ">"
+	if strings.Contains(line, "│ >") || strings.Contains(line, "│\u00a0>") || strings.Contains(line, "> Rejected") {
 		return true
 	}
 	
@@ -361,6 +362,7 @@ func (p *PermissionHandler) isInputBox(line string) bool {
 	
 	for i := startIdx; i < contextLen; i++ {
 		if strings.Contains(p.contextLines[i], "│ >") || 
+		   strings.Contains(p.contextLines[i], "│\u00a0>") ||
 		   strings.Contains(p.contextLines[i], "> Rejected") {
 			return true
 		}
