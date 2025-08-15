@@ -1,2 +1,5 @@
 reviews:
-  base_branches: ['**']
+  auto_review:
+    enabled: true
+    base_branches:
+      - ".*"
