@@ -28,14 +28,48 @@ var (
 // ColorStripWriter is a writer that strips ANSI colors before writing
 type ColorStripWriter struct {
 	Writer io.Writer
+	regex  *regexp.Regexp
+}
+
+// NewColorStripWriter creates a new ColorStripWriter
+func NewColorStripWriter(writer io.Writer) *ColorStripWriter {
+	// Pattern for stripping ANSI escape sequences
+	ansiEscape := `\x1b\[[0-9;?]*[mKHJhlABCDEFGPST]`
+	return &ColorStripWriter{
+		Writer: writer,
+		regex:  regexp.MustCompile(ansiEscape),
+	}
 }
 
 func (w *ColorStripWriter) Write(p []byte) (n int, err error) {
-	// Create pattern inline for stripping
-	ansiEscape := `\x1b\[[0-9;?]*[mKHJhlABCDEFGPST]`
-	re := regexp.MustCompile(ansiEscape)
-	stripped := re.ReplaceAllString(string(p), "")
-	return w.Writer.Write([]byte(stripped))
+	stripped := w.regex.ReplaceAllString(string(p), "")
+	_, err = w.Writer.Write([]byte(stripped))
+	// Return original byte count per io.Writer contract
+	return len(p), err
+}
+
+// ScrollbackClearFilterWriter is a writer that filters out scrollback clear control sequences
+type ScrollbackClearFilterWriter struct {
+	Writer io.Writer
+	regex  *regexp.Regexp
+}
+
+// NewScrollbackClearFilterWriter creates a new ScrollbackClearFilterWriter
+func NewScrollbackClearFilterWriter(writer io.Writer) *ScrollbackClearFilterWriter {
+	// \x1b[3J - Clear entire scrollback buffer (ED - Erase Display with parameter 3)
+	scrollbackClearPattern := `\x1b\[3J`
+	return &ScrollbackClearFilterWriter{
+		Writer: writer,
+		regex:  regexp.MustCompile(scrollbackClearPattern),
+	}
+}
+
+func (w *ScrollbackClearFilterWriter) Write(p []byte) (n int, err error) {
+	// Filter out scrollback clear control sequences
+	filtered := w.regex.ReplaceAllString(string(p), "")
+	_, err = w.Writer.Write([]byte(filtered))
+	// Return original byte count per io.Writer contract
+	return len(p), err
 }
 
 
