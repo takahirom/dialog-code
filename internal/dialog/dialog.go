@@ -25,6 +25,24 @@ var (
 	dialogCooldown   time.Time
 )
 
+// writeAll writes b completely or returns an error.
+func writeAll(w io.Writer, b []byte) error {
+	for len(b) > 0 {
+		n, err := w.Write(b)
+		if n > 0 {
+			b = b[n:]
+		}
+		if err != nil {
+			return err
+		}
+		// Prevent infinite loop on zero-write, no-error
+		if n == 0 {
+			return io.ErrShortWrite
+		}
+	}
+	return nil
+}
+
 // ColorStripWriter is a writer that strips ANSI colors before writing
 type ColorStripWriter struct {
 	Writer io.Writer
@@ -42,10 +60,17 @@ func NewColorStripWriter(writer io.Writer) *ColorStripWriter {
 }
 
 func (w *ColorStripWriter) Write(p []byte) (n int, err error) {
-	stripped := w.regex.ReplaceAllString(string(p), "")
-	_, err = w.Writer.Write([]byte(stripped))
-	// Return original byte count per io.Writer contract
-	return len(p), err
+	// Work on bytes to avoid string allocs.
+	filtered := w.regex.ReplaceAll(p, []byte{})
+	if len(filtered) == 0 {
+		// All bytes were filtered; we still "consumed" p.
+		return len(p), nil
+	}
+	if err := writeAll(w.Writer, filtered); err != nil {
+		// All-or-nothing: if we couldn't flush filtered bytes, report failure.
+		return 0, err
+	}
+	return len(p), nil
 }
 
 // ScrollbackClearFilterWriter is a writer that filters out scrollback clear control sequences
@@ -65,11 +90,18 @@ func NewScrollbackClearFilterWriter(writer io.Writer) *ScrollbackClearFilterWrit
 }
 
 func (w *ScrollbackClearFilterWriter) Write(p []byte) (n int, err error) {
-	// Filter out scrollback clear control sequences
-	filtered := w.regex.ReplaceAllString(string(p), "")
-	_, err = w.Writer.Write([]byte(filtered))
-	// Return original byte count per io.Writer contract
-	return len(p), err
+	// Use regex filtering like ColorStripWriter for consistency and simplicity
+	// Filters complete ESC[3J sequences in normal usage
+	filtered := w.regex.ReplaceAll(p, []byte{})
+	if len(filtered) == 0 {
+		// All bytes were filtered; we still "consumed" p.
+		return len(p), nil
+	}
+	if err := writeAll(w.Writer, filtered); err != nil {
+		// All-or-nothing: if we couldn't flush filtered bytes, report failure.
+		return 0, err
+	}
+	return len(p), nil
 }
 
 

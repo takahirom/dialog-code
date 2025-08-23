@@ -78,3 +78,49 @@ func TestScrollbackClearFilterWithColorStrip(t *testing.T) {
 		t.Errorf("Expected %q, got %q", expected, result)
 	}
 }
+
+func TestScrollbackClearFilterBasicFiltering(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "complete sequence filtered",
+			input:    "Hello\x1b[3JWorld",
+			expected: "HelloWorld",
+		},
+		{
+			name:     "multiple complete sequences",
+			input:    "A\x1b[3JB\x1b[3JC",
+			expected: "ABC",
+		},
+		{
+			name:     "sequence with other ANSI codes",
+			input:    "Test\x1b[31m\x1b[3JRed\x1b[0m",
+			expected: "Test\x1b[31mRed\x1b[0m",
+		},
+		{
+			name:     "partial sequence not filtered",
+			input:    "Hello\x1b[3XWorld",
+			expected: "Hello\x1b[3XWorld",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			writer := dialog.NewScrollbackClearFilterWriter(&buf)
+			
+			_, err := writer.Write([]byte(tt.input))
+			if err != nil {
+				t.Fatalf("Write failed: %v", err)
+			}
+			
+			result := buf.String()
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
+			}
+		})
+	}
+}
