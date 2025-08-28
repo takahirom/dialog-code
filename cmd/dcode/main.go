@@ -41,11 +41,12 @@ const (
 )
 
 var (
-	autoApprove    = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
-	autoReject     = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
-	autoRejectWait = flag.Int("auto-reject-wait", 0, "Auto-reject with N seconds wait for user intervention (0 = disabled)")
-	stripColors    = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
-	debugFlag      = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
+	autoApprove             = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
+	autoReject              = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
+	autoRejectWait          = flag.Int("auto-reject-wait", 0, "Auto-reject with N seconds wait for user intervention (0 = disabled)")
+	stripColors             = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
+	preventScrollbackClear  = flag.Bool("prevent-scrollback-clear", true, "Prevent scrollback history clear control sequences")
+	debugFlag               = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
 )
 
 func main() {
@@ -68,6 +69,24 @@ func main() {
 					os.Exit(1)
 				}
 			}
+		} else if strings.HasPrefix(arg, "-prevent-scrollback-clear=") || strings.HasPrefix(arg, "--prevent-scrollback-clear=") {
+			// Parse --prevent-scrollback-clear=true/false format
+			parts := strings.SplitN(arg, "=", 2)
+			if len(parts) == 2 && parts[1] != "" {
+				if parts[1] == "true" {
+					*preventScrollbackClear = true
+				} else if parts[1] == "false" {
+					*preventScrollbackClear = false
+				} else {
+					fmt.Fprintf(os.Stderr, "Invalid prevent-scrollback-clear value: %s (must be true or false)\n", parts[1])
+					os.Exit(1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "prevent-scrollback-clear flag requires a value (true or false)\n")
+				os.Exit(1)
+			}
+		} else if arg == "-prevent-scrollback-clear" || arg == "--prevent-scrollback-clear" {
+			*preventScrollbackClear = true
 		} else if arg == "-strip-colors" || arg == "--strip-colors" {
 			*stripColors = true
 		} else if arg == "-debug" || arg == "--debug" {
@@ -154,12 +173,16 @@ func main() {
 		}()
 	}
 
-	// Create display writer
-	var displayWriter io.Writer
+	// Create display writer with optional filters
+	var displayWriter io.Writer = os.Stdout
+	
+	// Apply scrollback clear filter by default
+	if *preventScrollbackClear {
+		displayWriter = dialog.NewScrollbackClearFilterWriter(displayWriter)
+	}
+	
 	if *stripColors {
-		displayWriter = &dialog.ColorStripWriter{Writer: os.Stdout}
-	} else {
-		displayWriter = os.Stdout
+		displayWriter = dialog.NewColorStripWriter(displayWriter)
 	}
 
 	// Create and run the app
