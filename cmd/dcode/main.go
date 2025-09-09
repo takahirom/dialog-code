@@ -33,7 +33,7 @@ const (
 
 	// Auto-reject timing constants
 	AutoRejectChoiceDelayMs  = 500
-	AutoRejectCRDelayMs      = 600
+	AutoRejectCRDelayMs      = 6000
 	AutoRejectProcessDelayMs = 500
 
 	// Auto-reject base message
@@ -41,12 +41,12 @@ const (
 )
 
 var (
-	autoApprove             = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
-	autoReject              = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
-	autoRejectWait          = flag.Int("auto-reject-wait", 0, "Auto-reject with N seconds wait for user intervention (0 = disabled)")
-	stripColors             = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
-	preventScrollbackClear  = flag.Bool("prevent-scrollback-clear", true, "Prevent scrollback history clear control sequences")
-	debugFlag               = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
+	autoApprove            = flag.Bool("auto-approve", false, "Automatically approve all prompts without showing dialogs")
+	autoReject             = flag.Bool("auto-reject", false, "Automatically reject unauthorized commands without showing dialogs")
+	autoRejectWait         = flag.Int("auto-reject-wait", 0, "Auto-reject with N seconds wait for user intervention (0 = disabled)")
+	stripColors            = flag.Bool("strip-colors", false, "Remove ANSI color codes from output")
+	preventScrollbackClear = flag.Bool("prevent-scrollback-clear", true, "Prevent scrollback history clear control sequences")
+	debugFlag              = flag.Bool("debug", false, "Enable debug logging to debug_output.log")
 )
 
 func main() {
@@ -175,12 +175,12 @@ func main() {
 
 	// Create display writer with optional filters
 	var displayWriter io.Writer = os.Stdout
-	
+
 	// Apply scrollback clear filter by default
 	if *preventScrollbackClear {
 		displayWriter = dialog.NewScrollbackClearFilterWriter(displayWriter)
 	}
-	
+
 	if *stripColors {
 		displayWriter = dialog.NewColorStripWriter(displayWriter)
 	}
