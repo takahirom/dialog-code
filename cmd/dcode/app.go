@@ -17,6 +17,7 @@ import (
 const (
 	PTYBufferSize     = 1024 // Buffer size for PTY reading
 	ContextBufferSize = 50   // Buffer size for context lines
+	SubmitKey         = "\r" // Key sequence for submitting terminal input
 )
 
 // PermissionCallback defines the callback for permission requests
@@ -324,7 +325,7 @@ func (p *PermissionHandler) isInsideDialogBox(line string) bool {
 	if strings.Contains(line, "│") {
 		return true
 	}
-	
+
 	// Check recent context for dialog box start
 	for i := len(p.contextLines) - 1; i >= 0 && i > len(p.contextLines)-5; i-- {
 		if i < 0 {
@@ -339,7 +340,7 @@ func (p *PermissionHandler) isInsideDialogBox(line string) bool {
 			return false
 		}
 	}
-	
+
 	return false
 }
 
@@ -351,7 +352,7 @@ func (p *PermissionHandler) isInputBox(line string) bool {
 	if strings.Contains(line, "│ >") || strings.Contains(line, "│\u00a0>") || strings.Contains(line, "> Rejected") {
 		return true
 	}
-	
+
 	// Check recent context (up to 3 lines back) for input box patterns
 	const contextLinesToCheck = 3
 	contextLen := len(p.contextLines)
@@ -359,15 +360,15 @@ func (p *PermissionHandler) isInputBox(line string) bool {
 	if startIdx < 0 {
 		startIdx = 0
 	}
-	
+
 	for i := startIdx; i < contextLen; i++ {
-		if strings.Contains(p.contextLines[i], "│ >") || 
-		   strings.Contains(p.contextLines[i], "│\u00a0>") ||
-		   strings.Contains(p.contextLines[i], "> Rejected") {
+		if strings.Contains(p.contextLines[i], "│ >") ||
+			strings.Contains(p.contextLines[i], "│\u00a0>") ||
+			strings.Contains(p.contextLines[i], "> Rejected") {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
@@ -459,7 +460,7 @@ func (p *PermissionHandler) sendAutoReject() {
 
 		// Send carriage return separately
 		time.Sleep(AutoRejectCRDelayMs * time.Millisecond)
-		if err := p.writeToTerminal("\r"); err != nil {
+		if err := p.writeToTerminal(SubmitKey); err != nil {
 			// Carriage return failed, continue silently
 		}
 	}()
@@ -526,40 +527,40 @@ const (
 // isValidCommandLine checks if a line contains valid command information
 func isValidCommandLine(line string) bool {
 	cleanLine := strings.TrimSpace(strings.Trim(line, "│ \t"))
-	
+
 	if cleanLine == "" {
 		return false
 	}
-	
+
 	// Skip dialog UI elements and decorations
 	excludePatterns := []string{
 		DialogQuestionPattern,
 		DialogChoicePattern,
 		DialogCommandPattern,
 	}
-	
+
 	// Check for patterns that should be filtered anywhere in the line
 	for _, pattern := range excludePatterns {
 		if strings.Contains(cleanLine, pattern) {
 			return false
 		}
 	}
-	
+
 	// Check for numbered dialog choices (1. Yes, 2. No, etc.)
 	if len(cleanLine) >= 3 && cleanLine[1] == '.' && cleanLine[0] >= '1' && cleanLine[0] <= '9' {
 		return false
 	}
-	
+
 	// Check for patterns that should be filtered at line start
 	if strings.HasPrefix(cleanLine, ">") || strings.HasPrefix(cleanLine, ".") {
 		return false
 	}
-	
+
 	// Skip lines that are only decorative characters
 	if strings.Trim(cleanLine, "─━┌┐└┘├┤┬┴┼╭╮╯╰╠╣╦╩╬ ") == "" {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -568,28 +569,28 @@ func (p *PermissionHandler) buildAutoRejectMessage() string {
 	// Get command details from dialog context using parseDialogBox
 	if len(p.appState.Prompt.Context) > 0 {
 		dialogInfo := choice.ParseDialogBox(p.appState.Prompt.Context, p.patterns)
-		
+
 		// Build command details from parsed dialog box
 		if len(dialogInfo.CommandDetails) > 0 {
 			var builder strings.Builder
-			
+
 			for _, detail := range dialogInfo.CommandDetails {
 				if strings.TrimSpace(detail) == "" {
 					continue
 				}
-				
+
 				if builder.Len() > 0 {
 					builder.WriteString("\n")
 				}
 				builder.WriteString(strings.TrimSpace(detail))
 			}
-			
+
 			if builder.Len() > 0 {
 				return fmt.Sprintf("Rejected command:\n%s\n\n%s", builder.String(), AutoRejectBaseMessage)
 			}
 		}
 	}
-	
+
 	return AutoRejectBaseMessage
 }
 
@@ -610,7 +611,7 @@ func (p *PermissionHandler) writeAutoRejectChoice(maxChoice string) {
 
 	// Send carriage return separately
 	time.Sleep(AutoRejectCRDelayMs * time.Millisecond)
-	if err := p.writeToTerminal("\r"); err != nil {
+	if err := p.writeToTerminal(SubmitKey); err != nil {
 		// Carriage return failed, continue silently
 	}
 }
