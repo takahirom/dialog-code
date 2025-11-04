@@ -1,5 +1,7 @@
 # dcode - Dialog Code
 
+⚠️ Currently, this is not working with the latest version of Claude Code.
+
 A Go wrapper for Claude Code that adds macOS permission dialog handling and seamless option passthrough.
 
 <img width="1552" height="1232" alt="image" src="https://github.com/user-attachments/assets/51e4a423-7365-43ee-a93f-c2b319768a26" />
