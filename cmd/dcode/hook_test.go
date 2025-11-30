@@ -59,6 +59,48 @@ func TestPermissionRequestHook(t *testing.T) {
 	}
 }
 
+// TestInvalidJSONReturnsError verifies that invalid JSON input causes an error (Requirement 3.1)
+func TestInvalidJSONReturnsError(t *testing.T) {
+	// Arrange: Create invalid JSON input
+	invalidJSON := strings.NewReader("{ invalid json }")
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "1", // Allow button (won't be used)
+	}
+
+	// Act: Call the hook handler with invalid JSON
+	err := handlePermissionRequestHook(invalidJSON, &stdout, mockDialog)
+
+	// Assert: Error is returned
+	if err == nil {
+		t.Fatal("Expected error for invalid JSON, but got nil")
+	}
+}
+
+// TestEmptyStdinReturnsEOF verifies that empty stdin causes an EOF error (Requirement 3.2)
+// This allows the hook to gracefully exit with code 0 for empty input
+func TestEmptyStdinReturnsEOF(t *testing.T) {
+	// Arrange: Create empty stdin
+	emptyStdin := strings.NewReader("")
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "1", // Allow button (won't be used)
+	}
+
+	// Act: Call the hook handler with empty stdin
+	err := handlePermissionRequestHook(emptyStdin, &stdout, mockDialog)
+
+	// Assert: EOF error is returned
+	if err == nil {
+		t.Fatal("Expected EOF error for empty stdin, but got nil")
+	}
+
+	// Assert: The error is EOF
+	if err.Error() != "EOF" {
+		t.Errorf("Expected EOF error, but got: %v", err)
+	}
+}
+
 // TestDialogMessageContainsToolName verifies that the dialog message includes the tool name
 func TestDialogMessageContainsToolName(t *testing.T) {
 	// Arrange: Create input JSON with Bash tool
@@ -80,9 +122,6 @@ func TestDialogMessageContainsToolName(t *testing.T) {
 	if !strings.Contains(mockDialog.capturedMessage, "Bash") {
 		t.Errorf("Dialog message does not contain tool name 'Bash'.\nGot: %s", mockDialog.capturedMessage)
 	}
-
-	// Log the captured message for verification
-	t.Logf("Captured dialog message: %s", mockDialog.capturedMessage)
 }
 
 // TestDialogMessageContainsCommandContent verifies that the dialog message includes the command content (Requirement 2.2)
@@ -106,9 +145,6 @@ func TestDialogMessageContainsCommandContent(t *testing.T) {
 	if !strings.Contains(mockDialog.capturedMessage, "npm run build") {
 		t.Errorf("Dialog message does not contain command content 'npm run build'.\nGot: %s", mockDialog.capturedMessage)
 	}
-
-	// Log the captured message for verification
-	t.Logf("Captured dialog message: %s", mockDialog.capturedMessage)
 }
 
 // TestDialogShowsAllowDenyButtons verifies that the dialog receives Allow and Deny buttons (Requirement 2.3)
@@ -142,9 +178,6 @@ func TestDialogShowsAllowDenyButtons(t *testing.T) {
 	if len(mockDialog.capturedButtons) > 1 && mockDialog.capturedButtons[1] != "Deny" {
 		t.Errorf("Expected second button to be 'Deny', got '%s'", mockDialog.capturedButtons[1])
 	}
-
-	// Log the captured buttons for verification
-	t.Logf("Captured dialog buttons: %v", mockDialog.capturedButtons)
 }
 
 // createTestInput creates a mock stdin reader with a Bash command JSON input

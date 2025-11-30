@@ -22,8 +22,8 @@ A Claude Code PermissionRequest hook that shows a dialog for tool execution appr
 
 ### Phase 3: Error Handling
 
-- [ ] **3.1** When stdin contains invalid JSON, exits with code 1
-- [ ] **3.2** When stdin is empty, exits with code 0 (default behavior)
+- [x] **3.1** When stdin contains invalid JSON, exits with code 1
+- [x] **3.2** When stdin is empty, exits with code 0 (default behavior)
 
 ### Phase 4: Various Tools
 
