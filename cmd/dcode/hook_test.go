@@ -298,6 +298,28 @@ func TestUnknownToolStillWorks(t *testing.T) {
 	assertJSONEqual(t, expectedOutput, stdout.String())
 }
 
+// TestDialogTimeout verifies that when dialog times out, it returns deny with timeout message
+func TestDialogTimeout(t *testing.T) {
+	// Arrange: Create input JSON with Bash tool
+	stdin := createTestInput(t)
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "", // Empty string indicates timeout
+	}
+
+	// Act: Call the hook handler
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+
+	// Assert: No error occurred
+	if err != nil {
+		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+	}
+
+	// Assert: Output is deny with timeout message
+	expectedOutput := `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"User did not respond within 60 seconds","interrupt":false}}}`
+	assertJSONEqual(t, expectedOutput, stdout.String())
+}
+
 // createEditToolInput creates a mock stdin reader with Edit tool JSON input
 func createEditToolInput(t *testing.T) *bytes.Reader {
 	t.Helper()

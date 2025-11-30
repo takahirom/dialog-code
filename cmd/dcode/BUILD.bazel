@@ -4,6 +4,7 @@ go_library(
     name = "dcode_lib",
     srcs = [
         "hook.go",
+        "main.go",
     ],
     importpath = "github.com/takahirom/dialog-code/cmd/dcode",
     visibility = ["//visibility:private"],

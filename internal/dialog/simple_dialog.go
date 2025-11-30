@@ -38,7 +38,7 @@ func (d *SimpleOSDialog) Show(message string, buttons []string, defaultButton st
 func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []string, defaultButton string) string {
 	// Escape message for AppleScript
 	escapedMessage := d.escapeForAppleScript(message)
-	
+
 	// Build buttons string for AppleScript
 	var buttonStrings []string
 	for _, button := range buttons {
@@ -49,13 +49,13 @@ func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []stri
 		buttonStrings = append(buttonStrings, fmt.Sprintf(`"%s"`, d.escapeForAppleScript(button)))
 	}
 	buttonsStr := strings.Join(buttonStrings, ",")
-	
-	// Build AppleScript command
-	script := fmt.Sprintf(`display dialog "%s" with title "Claude Permission" buttons {%s} default button "%s"`,
+
+	// Build AppleScript command with 60 second timeout
+	script := fmt.Sprintf(`display dialog "%s" with title "Claude Permission" buttons {%s} default button "%s" giving up after 60`,
 		escapedMessage, buttonsStr, d.escapeForAppleScript(defaultButton))
-	
+
 	debug.Printf("[DEBUG] SimpleOSDialog: Executing AppleScript: %s\n", script)
-	
+
 	// Execute AppleScript
 	cmd := exec.Command("osascript", "-e", script)
 	output, err := cmd.Output()
@@ -65,7 +65,7 @@ func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []stri
 		debug.Printf("[DEBUG] SimpleOSDialog: AppleScript error: %v, returning \"%s\"\n", err, maxChoice)
 		return maxChoice
 	}
-	
+
 	// Parse the result to find which button was clicked
 	return d.parseAppleScriptResult(string(output), buttons)
 }
@@ -80,12 +80,18 @@ func (d *SimpleOSDialog) escapeForAppleScript(text string) string {
 
 // parseAppleScriptResult parses AppleScript output to determine which button was clicked
 func (d *SimpleOSDialog) parseAppleScriptResult(output string, buttons []string) string {
-	// AppleScript returns "button returned:ButtonName"
-	re := regexp.MustCompile(`button returned:(.+)`)
+	// Check if dialog timed out (gave up:true)
+	if strings.Contains(output, "gave up:true") {
+		debug.Printf("[DEBUG] SimpleOSDialog: Dialog timed out, returning empty string\n")
+		return ""
+	}
+
+	// AppleScript returns "button returned:ButtonName, gave up:false"
+	re := regexp.MustCompile(`button returned:([^,]+)`)
 	matches := re.FindStringSubmatch(output)
 	if len(matches) > 1 {
 		buttonName := strings.TrimSpace(matches[1])
-		
+
 		// Find the matching button and return its index (1-based)
 		for i, button := range buttons {
 			if button == buttonName || (len(button) > 50 && strings.HasPrefix(button, buttonName[:47])) {
@@ -93,7 +99,7 @@ func (d *SimpleOSDialog) parseAppleScriptResult(output string, buttons []string)
 			}
 		}
 	}
-	
+
 	// Default to last button if parsing fails (most restrictive choice)
 	maxChoice := fmt.Sprintf("%d", len(buttons))
 	debug.Printf("[DEBUG] SimpleOSDialog: No button match found, returning last button \"%s\"\n", maxChoice)

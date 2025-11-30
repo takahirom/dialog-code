@@ -64,7 +64,13 @@ func handlePermissionRequestHook(stdin io.Reader, stdout io.Writer, dialog Dialo
 // parseDialogResponse parses the dialog response which may contain an optional message
 // Format: "buttonIndex" or "buttonIndex|message"
 // Returns: (behavior, message)
+// Empty string response indicates timeout
 func parseDialogResponse(response string) (string, string) {
+	// Handle timeout case (empty string)
+	if response == "" {
+		return behaviorDeny, "User did not respond within 60 seconds"
+	}
+
 	parts := strings.SplitN(response, "|", 2)
 	buttonIndex := parts[0]
 	message := ""
