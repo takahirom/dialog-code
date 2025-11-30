@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -28,7 +29,7 @@ type DialogInterface interface {
 // handlePermissionRequestHook processes a PermissionRequest hook event
 // It reads JSON input from stdin, shows a dialog to the user, and outputs
 // a JSON response to stdout based on the user's decision
-func handlePermissionRequestHook(stdin io.Reader, stdout io.Writer, dialog DialogInterface) error {
+func handlePermissionRequestHook(stdin io.Reader, stdout io.Writer, dialog DialogInterface, timeout int) error {
 	// Read input JSON
 	var input map[string]interface{}
 	decoder := json.NewDecoder(stdin)
@@ -53,7 +54,7 @@ func handlePermissionRequestHook(stdin io.Reader, stdout io.Writer, dialog Dialo
 	response := dialog.Show(message, []string{"Allow", "Deny"}, "Allow")
 
 	// Parse response for behavior and optional message
-	behavior, msg := parseDialogResponse(response)
+	behavior, msg := parseDialogResponse(response, timeout)
 
 	// Create output based on user's decision
 	output := createHookResponse(behavior, msg)
@@ -65,10 +66,10 @@ func handlePermissionRequestHook(stdin io.Reader, stdout io.Writer, dialog Dialo
 // Format: "buttonIndex" or "buttonIndex|message"
 // Returns: (behavior, message)
 // Empty string response indicates timeout
-func parseDialogResponse(response string) (string, string) {
+func parseDialogResponse(response string, timeout int) (string, string) {
 	// Handle timeout case (empty string)
 	if response == "" {
-		return behaviorDeny, "User did not respond within 60 seconds"
+		return behaviorDeny, fmt.Sprintf("User did not respond within %d seconds", timeout)
 	}
 
 	parts := strings.SplitN(response, "|", 2)
@@ -123,4 +124,22 @@ func formatDialogMessage(toolName string, toolInput map[string]interface{}) stri
 	}
 
 	return message
+}
+
+// parseTimeoutFlag parses --timeout=N from command line arguments
+// Returns default of 60 seconds if not specified or invalid
+func parseTimeoutFlag(args []string) int {
+	const defaultTimeout = 60
+	const prefix = "--timeout="
+
+	for _, arg := range args {
+		if strings.HasPrefix(arg, prefix) {
+			valueStr := strings.TrimPrefix(arg, prefix)
+			if value, err := strconv.Atoi(valueStr); err == nil && value > 0 {
+				return value
+			}
+		}
+	}
+
+	return defaultTimeout
 }

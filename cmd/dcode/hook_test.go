@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -46,7 +47,7 @@ func TestPermissionRequestHook(t *testing.T) {
 			}
 
 			// Act: Call the hook handler
-			err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+			err := handlePermissionRequestHook(stdin, &stdout, mockDialog, 60)
 
 			// Assert: No error occurred
 			if err != nil {
@@ -69,7 +70,7 @@ func TestInvalidJSONReturnsError(t *testing.T) {
 	}
 
 	// Act: Call the hook handler with invalid JSON
-	err := handlePermissionRequestHook(invalidJSON, &stdout, mockDialog)
+	err := handlePermissionRequestHook(invalidJSON, &stdout, mockDialog, 60)
 
 	// Assert: Error is returned
 	if err == nil {
@@ -88,7 +89,7 @@ func TestEmptyStdinReturnsEOF(t *testing.T) {
 	}
 
 	// Act: Call the hook handler with empty stdin
-	err := handlePermissionRequestHook(emptyStdin, &stdout, mockDialog)
+	err := handlePermissionRequestHook(emptyStdin, &stdout, mockDialog, 60)
 
 	// Assert: EOF error is returned
 	if err == nil {
@@ -111,7 +112,7 @@ func TestDialogMessageContainsToolName(t *testing.T) {
 	}
 
 	// Act: Call the hook handler
-	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog, 60)
 
 	// Assert: No error occurred
 	if err != nil {
@@ -134,7 +135,7 @@ func TestDialogMessageContainsCommandContent(t *testing.T) {
 	}
 
 	// Act: Call the hook handler
-	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog, 60)
 
 	// Assert: No error occurred
 	if err != nil {
@@ -157,7 +158,7 @@ func TestDialogShowsAllowDenyButtons(t *testing.T) {
 	}
 
 	// Act: Call the hook handler
-	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog, 60)
 
 	// Assert: No error occurred
 	if err != nil {
@@ -225,7 +226,7 @@ func TestEditToolShowsFilePath(t *testing.T) {
 	}
 
 	// Act: Call the hook handler
-	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog, 60)
 
 	// Assert: No error occurred
 	if err != nil {
@@ -253,7 +254,7 @@ func TestWriteToolShowsFilePath(t *testing.T) {
 	}
 
 	// Act: Call the hook handler
-	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog, 60)
 
 	// Assert: No error occurred
 	if err != nil {
@@ -281,7 +282,7 @@ func TestUnknownToolStillWorks(t *testing.T) {
 	}
 
 	// Act: Call the hook handler
-	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog, 60)
 
 	// Assert: No error occurred
 	if err != nil {
@@ -300,24 +301,45 @@ func TestUnknownToolStillWorks(t *testing.T) {
 
 // TestDialogTimeout verifies that when dialog times out, it returns deny with timeout message
 func TestDialogTimeout(t *testing.T) {
-	// Arrange: Create input JSON with Bash tool
-	stdin := createTestInput(t)
-	var stdout bytes.Buffer
-	mockDialog := &MockDialog{
-		response: "", // Empty string indicates timeout
+	tests := []struct {
+		name            string
+		timeout         int
+		expectedMessage string
+	}{
+		{
+			name:            "Default 60 second timeout",
+			timeout:         60,
+			expectedMessage: "User did not respond within 60 seconds",
+		},
+		{
+			name:            "Custom 30 second timeout",
+			timeout:         30,
+			expectedMessage: "User did not respond within 30 seconds",
+		},
 	}
 
-	// Act: Call the hook handler
-	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange: Create input JSON with Bash tool
+			stdin := createTestInput(t)
+			var stdout bytes.Buffer
+			mockDialog := &MockDialog{
+				response: "", // Empty string indicates timeout
+			}
 
-	// Assert: No error occurred
-	if err != nil {
-		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+			// Act: Call the hook handler
+			err := handlePermissionRequestHook(stdin, &stdout, mockDialog, tt.timeout)
+
+			// Assert: No error occurred
+			if err != nil {
+				t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+			}
+
+			// Assert: Output is deny with correct timeout message
+			expectedOutput := fmt.Sprintf(`{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"%s","interrupt":false}}}`, tt.expectedMessage)
+			assertJSONEqual(t, expectedOutput, stdout.String())
+		})
 	}
-
-	// Assert: Output is deny with timeout message
-	expectedOutput := `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"User did not respond within 60 seconds","interrupt":false}}}`
-	assertJSONEqual(t, expectedOutput, stdout.String())
 }
 
 // createEditToolInput creates a mock stdin reader with Edit tool JSON input
@@ -372,6 +394,40 @@ func createUnknownToolInput(t *testing.T) *bytes.Reader {
 		t.Fatalf("Failed to marshal input JSON: %v", err)
 	}
 	return bytes.NewReader(inputJSON)
+}
+
+// TestParseTimeoutFlag verifies that --timeout=N flag is parsed correctly
+func TestParseTimeoutFlag(t *testing.T) {
+	tests := []struct {
+		name            string
+		args            []string
+		expectedTimeout int
+	}{
+		{
+			name:            "Default timeout is 60 seconds",
+			args:            []string{},
+			expectedTimeout: 60,
+		},
+		{
+			name:            "Custom timeout 30 seconds",
+			args:            []string{"--timeout=30"},
+			expectedTimeout: 30,
+		},
+		{
+			name:            "Custom timeout 120 seconds",
+			args:            []string{"--timeout=120"},
+			expectedTimeout: 120,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			timeout := parseTimeoutFlag(tt.args)
+			if timeout != tt.expectedTimeout {
+				t.Errorf("parseTimeoutFlag(%v) = %d, want %d", tt.args, timeout, tt.expectedTimeout)
+			}
+		})
+	}
 }
 
 // MockDialog is a mock implementation of the dialog interface for testing

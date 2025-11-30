@@ -8,11 +8,15 @@ import (
 )
 
 func main() {
-	// Create real dialog
+	// Parse timeout from command line arguments
+	timeout := parseTimeoutFlag(os.Args[1:])
+
+	// Create real dialog with timeout
 	d := dialog.NewSimpleOSDialog()
+	d.SetTimeout(timeout)
 
 	// Handle permission request hook
-	err := handlePermissionRequestHook(os.Stdin, os.Stdout, d)
+	err := handlePermissionRequestHook(os.Stdin, os.Stdout, d, timeout)
 
 	// Handle io.EOF specially - exit 0 with no output
 	if err == io.EOF {

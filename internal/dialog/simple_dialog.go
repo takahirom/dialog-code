@@ -10,11 +10,20 @@ import (
 )
 
 // SimpleOSDialog provides pure OS dialog functionality without message processing
-type SimpleOSDialog struct{}
+type SimpleOSDialog struct {
+	timeout int // Timeout in seconds (default 60)
+}
 
-// NewSimpleOSDialog creates a new simple OS dialog
+// NewSimpleOSDialog creates a new simple OS dialog with default 60 second timeout
 func NewSimpleOSDialog() *SimpleOSDialog {
-	return &SimpleOSDialog{}
+	return &SimpleOSDialog{timeout: 60}
+}
+
+// SetTimeout sets the dialog timeout in seconds
+func (d *SimpleOSDialog) SetTimeout(seconds int) {
+	if seconds > 0 {
+		d.timeout = seconds
+	}
 }
 
 // Show displays a dialog with the given message and buttons, returns the selected button text
@@ -50,9 +59,9 @@ func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []stri
 	}
 	buttonsStr := strings.Join(buttonStrings, ",")
 
-	// Build AppleScript command with 60 second timeout
-	script := fmt.Sprintf(`display dialog "%s" with title "Claude Permission" buttons {%s} default button "%s" giving up after 60`,
-		escapedMessage, buttonsStr, d.escapeForAppleScript(defaultButton))
+	// Build AppleScript command with configurable timeout
+	script := fmt.Sprintf(`display dialog "%s" with title "Claude Permission" buttons {%s} default button "%s" giving up after %d`,
+		escapedMessage, buttonsStr, d.escapeForAppleScript(defaultButton), d.timeout)
 
 	debug.Printf("[DEBUG] SimpleOSDialog: Executing AppleScript: %s\n", script)
 
