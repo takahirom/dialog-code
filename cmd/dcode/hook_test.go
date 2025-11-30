@@ -215,6 +215,143 @@ func assertJSONEqual(t *testing.T, expected, actual string) {
 	}
 }
 
+// TestEditToolShowsFilePath verifies that the dialog message contains file_path for Edit tool (Requirement 4.1)
+func TestEditToolShowsFilePath(t *testing.T) {
+	// Arrange: Create input JSON with Edit tool
+	stdin := createEditToolInput(t)
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "1", // Allow button
+	}
+
+	// Act: Call the hook handler
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+
+	// Assert: No error occurred
+	if err != nil {
+		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+	}
+
+	// Assert: Dialog message contains the file_path
+	if !strings.Contains(mockDialog.capturedMessage, "/path/to/file.go") {
+		t.Errorf("Dialog message does not contain file_path '/path/to/file.go'.\nGot: %s", mockDialog.capturedMessage)
+	}
+
+	// Assert: Dialog message contains tool name "Edit"
+	if !strings.Contains(mockDialog.capturedMessage, "Edit") {
+		t.Errorf("Dialog message does not contain tool name 'Edit'.\nGot: %s", mockDialog.capturedMessage)
+	}
+}
+
+// TestWriteToolShowsFilePath verifies that the dialog message contains file_path for Write tool (Requirement 4.2)
+func TestWriteToolShowsFilePath(t *testing.T) {
+	// Arrange: Create input JSON with Write tool
+	stdin := createWriteToolInput(t)
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "1", // Allow button
+	}
+
+	// Act: Call the hook handler
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+
+	// Assert: No error occurred
+	if err != nil {
+		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+	}
+
+	// Assert: Dialog message contains the file_path
+	if !strings.Contains(mockDialog.capturedMessage, "/path/to/file.go") {
+		t.Errorf("Dialog message does not contain file_path '/path/to/file.go'.\nGot: %s", mockDialog.capturedMessage)
+	}
+
+	// Assert: Dialog message contains tool name "Write"
+	if !strings.Contains(mockDialog.capturedMessage, "Write") {
+		t.Errorf("Dialog message does not contain tool name 'Write'.\nGot: %s", mockDialog.capturedMessage)
+	}
+}
+
+// TestUnknownToolStillWorks verifies that unknown tools still show dialog with raw tool_input (Requirement 4.3)
+func TestUnknownToolStillWorks(t *testing.T) {
+	// Arrange: Create input JSON with an unknown tool
+	stdin := createUnknownToolInput(t)
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "1", // Allow button
+	}
+
+	// Act: Call the hook handler
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+
+	// Assert: No error occurred
+	if err != nil {
+		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+	}
+
+	// Assert: Dialog message contains tool name "UnknownTool"
+	if !strings.Contains(mockDialog.capturedMessage, "UnknownTool") {
+		t.Errorf("Dialog message does not contain tool name 'UnknownTool'.\nGot: %s", mockDialog.capturedMessage)
+	}
+
+	// Assert: Output matches expected format (allow decision)
+	expectedOutput := `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`
+	assertJSONEqual(t, expectedOutput, stdout.String())
+}
+
+// createEditToolInput creates a mock stdin reader with Edit tool JSON input
+func createEditToolInput(t *testing.T) *bytes.Reader {
+	t.Helper()
+	input := map[string]interface{}{
+		"hook_event_name": "PermissionRequest",
+		"tool_name":       "Edit",
+		"tool_input": map[string]interface{}{
+			"file_path":  "/path/to/file.go",
+			"old_string": "old",
+			"new_string": "new",
+		},
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("Failed to marshal input JSON: %v", err)
+	}
+	return bytes.NewReader(inputJSON)
+}
+
+// createWriteToolInput creates a mock stdin reader with Write tool JSON input
+func createWriteToolInput(t *testing.T) *bytes.Reader {
+	t.Helper()
+	input := map[string]interface{}{
+		"hook_event_name": "PermissionRequest",
+		"tool_name":       "Write",
+		"tool_input": map[string]interface{}{
+			"file_path": "/path/to/file.go",
+			"content":   "file content",
+		},
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("Failed to marshal input JSON: %v", err)
+	}
+	return bytes.NewReader(inputJSON)
+}
+
+// createUnknownToolInput creates a mock stdin reader with an unknown tool JSON input
+func createUnknownToolInput(t *testing.T) *bytes.Reader {
+	t.Helper()
+	input := map[string]interface{}{
+		"hook_event_name": "PermissionRequest",
+		"tool_name":       "UnknownTool",
+		"tool_input": map[string]interface{}{
+			"some_param": "some_value",
+		},
+	}
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		t.Fatalf("Failed to marshal input JSON: %v", err)
+	}
+	return bytes.NewReader(inputJSON)
+}
+
 // MockDialog is a mock implementation of the dialog interface for testing
 type MockDialog struct {
 	response        string

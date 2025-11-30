@@ -104,10 +104,17 @@ func createHookResponse(behavior string, message string) map[string]interface{} 
 
 // formatDialogMessage creates a user-friendly message from tool information
 func formatDialogMessage(toolName string, toolInput map[string]interface{}) string {
-	// For now, just show basic info
 	message := "Tool: " + toolName
+
+	// Show command for Bash tool
 	if command, ok := toolInput["command"].(string); ok {
 		message += "\nCommand: " + command
 	}
+
+	// Show file_path for Edit and Write tools
+	if filePath, ok := toolInput["file_path"].(string); ok {
+		message += "\nFile: " + filePath
+	}
+
 	return message
 }

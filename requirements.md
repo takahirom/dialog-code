@@ -27,9 +27,9 @@ A Claude Code PermissionRequest hook that shows a dialog for tool execution appr
 
 ### Phase 4: Various Tools
 
-- [ ] **4.1** Works with Edit tool (shows file_path and changes)
-- [ ] **4.2** Works with Write tool (shows file_path)
-- [ ] **4.3** Works with unknown tools (shows raw tool_input)
+- [x] **4.1** Works with Edit tool (shows file_path and changes)
+- [x] **4.2** Works with Write tool (shows file_path)
+- [x] **4.3** Works with unknown tools (shows raw tool_input)
 
 ---
 
