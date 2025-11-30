@@ -16,9 +16,9 @@ A Claude Code PermissionRequest hook that shows a dialog for tool execution appr
 
 ### Phase 2: Dialog Display
 
-- [ ] **2.1** Dialog shows the tool name (e.g., "Bash")
-- [ ] **2.2** Dialog shows the command content (e.g., "npm run build")
-- [ ] **2.3** Dialog shows "Allow" and "Deny" buttons
+- [x] **2.1** Dialog shows the tool name (e.g., "Bash")
+- [x] **2.2** Dialog shows the command content (e.g., "npm run build")
+- [x] **2.3** Dialog shows "Allow" and "Deny" buttons
 
 ### Phase 3: Error Handling
 

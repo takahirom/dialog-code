@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -58,6 +59,94 @@ func TestPermissionRequestHook(t *testing.T) {
 	}
 }
 
+// TestDialogMessageContainsToolName verifies that the dialog message includes the tool name
+func TestDialogMessageContainsToolName(t *testing.T) {
+	// Arrange: Create input JSON with Bash tool
+	stdin := createTestInput(t)
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "1", // Allow button
+	}
+
+	// Act: Call the hook handler
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+
+	// Assert: No error occurred
+	if err != nil {
+		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+	}
+
+	// Assert: Dialog message contains the tool name "Bash"
+	if !strings.Contains(mockDialog.capturedMessage, "Bash") {
+		t.Errorf("Dialog message does not contain tool name 'Bash'.\nGot: %s", mockDialog.capturedMessage)
+	}
+
+	// Log the captured message for verification
+	t.Logf("Captured dialog message: %s", mockDialog.capturedMessage)
+}
+
+// TestDialogMessageContainsCommandContent verifies that the dialog message includes the command content (Requirement 2.2)
+func TestDialogMessageContainsCommandContent(t *testing.T) {
+	// Arrange: Create input JSON with Bash tool and "npm run build" command
+	stdin := createTestInput(t)
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "1", // Allow button
+	}
+
+	// Act: Call the hook handler
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+
+	// Assert: No error occurred
+	if err != nil {
+		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+	}
+
+	// Assert: Dialog message contains the command content "npm run build"
+	if !strings.Contains(mockDialog.capturedMessage, "npm run build") {
+		t.Errorf("Dialog message does not contain command content 'npm run build'.\nGot: %s", mockDialog.capturedMessage)
+	}
+
+	// Log the captured message for verification
+	t.Logf("Captured dialog message: %s", mockDialog.capturedMessage)
+}
+
+// TestDialogShowsAllowDenyButtons verifies that the dialog receives Allow and Deny buttons (Requirement 2.3)
+func TestDialogShowsAllowDenyButtons(t *testing.T) {
+	// Arrange: Create input JSON with Bash tool
+	stdin := createTestInput(t)
+	var stdout bytes.Buffer
+	mockDialog := &MockDialog{
+		response: "1", // Allow button
+	}
+
+	// Act: Call the hook handler
+	err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+
+	// Assert: No error occurred
+	if err != nil {
+		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+	}
+
+	// Assert: Dialog receives exactly 2 buttons
+	if len(mockDialog.capturedButtons) != 2 {
+		t.Errorf("Expected 2 buttons, got %d: %v", len(mockDialog.capturedButtons), mockDialog.capturedButtons)
+	}
+
+	// Assert: First button is "Allow"
+	if len(mockDialog.capturedButtons) > 0 && mockDialog.capturedButtons[0] != "Allow" {
+		t.Errorf("Expected first button to be 'Allow', got '%s'", mockDialog.capturedButtons[0])
+	}
+
+	// Assert: Second button is "Deny"
+	if len(mockDialog.capturedButtons) > 1 && mockDialog.capturedButtons[1] != "Deny" {
+		t.Errorf("Expected second button to be 'Deny', got '%s'", mockDialog.capturedButtons[1])
+	}
+
+	// Log the captured buttons for verification
+	t.Logf("Captured dialog buttons: %v", mockDialog.capturedButtons)
+}
+
 // createTestInput creates a mock stdin reader with a Bash command JSON input
 func createTestInput(t *testing.T) *bytes.Reader {
 	t.Helper()
@@ -95,13 +184,17 @@ func assertJSONEqual(t *testing.T, expected, actual string) {
 
 // MockDialog is a mock implementation of the dialog interface for testing
 type MockDialog struct {
-	response string
-	message  string
+	response        string
+	message         string
+	capturedMessage string   // Captures the message passed to Show()
+	capturedButtons []string // Captures the buttons passed to Show()
 }
 
 // Show implements the dialog interface, returning the mocked response
 // For deny responses with a message, it appends the message after a pipe separator
 func (m *MockDialog) Show(message string, buttons []string, defaultButton string) string {
+	m.capturedMessage = message   // Capture the message for verification
+	m.capturedButtons = buttons    // Capture the buttons for verification
 	if m.message != "" {
 		return m.response + "|" + m.message
 	}
