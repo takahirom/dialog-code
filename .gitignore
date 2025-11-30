@@ -1,4 +1,5 @@
 # Compiled binaries
+/temp
 /dcode
 *.exe
 
