@@ -53,11 +53,9 @@ func handlePermissionRequestHook(stdin io.Reader, stdout io.Writer, dialog Dialo
 
 	// Create output based on user's decision
 	behavior := getBehaviorFromResponse(response)
-
 	output := createHookResponse(behavior)
 
-	encoder := json.NewEncoder(stdout)
-	return encoder.Encode(output)
+	return json.NewEncoder(stdout).Encode(output)
 }
 
 // getBehaviorFromResponse converts dialog button response to behavior string
@@ -70,12 +68,19 @@ func getBehaviorFromResponse(response string) string {
 
 // createHookResponse creates the JSON response structure for the hook
 func createHookResponse(behavior string) map[string]interface{} {
+	decision := map[string]interface{}{
+		"behavior": behavior,
+	}
+
+	// Add interrupt:false when denying
+	if behavior == behaviorDeny {
+		decision["interrupt"] = false
+	}
+
 	return map[string]interface{}{
 		"hookSpecificOutput": map[string]interface{}{
 			"hookEventName": hookEventPermissionRequest,
-			"decision": map[string]interface{}{
-				"behavior": behavior,
-			},
+			"decision":      decision,
 		},
 	}
 }

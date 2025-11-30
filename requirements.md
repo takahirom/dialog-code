@@ -11,7 +11,7 @@ A Claude Code PermissionRequest hook that shows a dialog for tool execution appr
 ### Phase 1: Basic Allow/Deny Flow
 
 - [x] **1.1** When user approves a Bash command in dialog, outputs allow JSON
-- [ ] **1.2** When user denies a Bash command in dialog, outputs deny JSON with interrupt:false
+- [x] **1.2** When user denies a Bash command in dialog, outputs deny JSON with interrupt:false
 - [ ] **1.3** When user denies with a message, the message is included in deny JSON
 
 ### Phase 2: Dialog Display

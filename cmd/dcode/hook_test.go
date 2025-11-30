@@ -6,10 +6,49 @@ import (
 	"testing"
 )
 
-// TestPermissionRequestHook_BashCommandAllow tests that when user approves a Bash command,
-// the hook handler outputs the correct allow JSON format
-func TestPermissionRequestHook_BashCommandAllow(t *testing.T) {
-	// Arrange: Create input JSON for a Bash command
+// TestPermissionRequestHook tests the hook handler for both allow and deny scenarios
+func TestPermissionRequestHook(t *testing.T) {
+	tests := []struct {
+		name           string
+		dialogResponse string
+		expectedOutput string
+	}{
+		{
+			name:           "BashCommandAllow",
+			dialogResponse: "1", // Allow button
+			expectedOutput: `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`,
+		},
+		{
+			name:           "BashCommandDeny",
+			dialogResponse: "2", // Deny button
+			expectedOutput: `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","interrupt":false}}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange: Create input JSON for a Bash command
+			stdin := createTestInput(t)
+			var stdout bytes.Buffer
+			mockDialog := &MockDialog{response: tt.dialogResponse}
+
+			// Act: Call the hook handler
+			err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
+
+			// Assert: No error occurred
+			if err != nil {
+				t.Fatalf("handlePermissionRequestHook returned error: %v", err)
+			}
+
+			// Assert: Output matches expected format
+			assertJSONEqual(t, tt.expectedOutput, stdout.String())
+		})
+	}
+}
+
+// createTestInput creates a mock stdin reader with a Bash command JSON input
+func createTestInput(t *testing.T) *bytes.Reader {
+	t.Helper()
 	input := map[string]interface{}{
 		"hook_event_name": "PermissionRequest",
 		"tool_name":       "Bash",
@@ -21,65 +60,24 @@ func TestPermissionRequestHook_BashCommandAllow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to marshal input JSON: %v", err)
 	}
+	return bytes.NewReader(inputJSON)
+}
 
-	// Mock stdin with the input JSON
-	stdin := bytes.NewReader(inputJSON)
-
-	// Mock stdout to capture output
-	var stdout bytes.Buffer
-
-	// Mock dialog to return "Allow" (user approves)
-	mockDialog := &MockDialog{
-		response: "1", // "1" represents first button (Allow)
-	}
-
-	// Act: Call the hook handler
-	err = handlePermissionRequestHook(stdin, &stdout, mockDialog)
-
-	// Assert: No error occurred
-	if err != nil {
-		t.Fatalf("handlePermissionRequestHook returned error: %v", err)
-	}
-
-	// Assert: Output JSON is correct allow format
-	var output map[string]interface{}
-	err = json.Unmarshal(stdout.Bytes(), &output)
-	if err != nil {
-		t.Fatalf("Failed to unmarshal output JSON: %v", err)
-	}
-
-	// Verify the output structure
-	hookOutput, ok := output["hookSpecificOutput"].(map[string]interface{})
-	if !ok {
-		t.Fatal("Output missing hookSpecificOutput field")
-	}
-
-	hookEventName, ok := hookOutput["hookEventName"].(string)
-	if !ok || hookEventName != "PermissionRequest" {
-		t.Errorf("Expected hookEventName to be 'PermissionRequest', got: %v", hookEventName)
-	}
-
-	decision, ok := hookOutput["decision"].(map[string]interface{})
-	if !ok {
-		t.Fatal("Output missing decision field")
-	}
-
-	behavior, ok := decision["behavior"].(string)
-	if !ok || behavior != "allow" {
-		t.Errorf("Expected behavior to be 'allow', got: %v", behavior)
-	}
-
-	// Verify the exact expected output format
-	expectedOutput := `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`
-	actualOutput := stdout.String()
-
-	// Compare JSON structures (order-independent)
+// assertJSONEqual compares two JSON strings for structural equality
+func assertJSONEqual(t *testing.T, expected, actual string) {
+	t.Helper()
 	var expectedJSON, actualJSON map[string]interface{}
-	json.Unmarshal([]byte(expectedOutput), &expectedJSON)
-	json.Unmarshal([]byte(actualOutput), &actualJSON)
+	if err := json.Unmarshal([]byte(expected), &expectedJSON); err != nil {
+		t.Fatalf("Failed to unmarshal expected JSON: %v", err)
+	}
+	if err := json.Unmarshal([]byte(actual), &actualJSON); err != nil {
+		t.Fatalf("Failed to unmarshal actual JSON: %v", err)
+	}
 
-	if !jsonEqual(expectedJSON, actualJSON) {
-		t.Errorf("Output JSON does not match expected format.\nExpected: %s\nGot: %s", expectedOutput, actualOutput)
+	expectedBytes, _ := json.Marshal(expectedJSON)
+	actualBytes, _ := json.Marshal(actualJSON)
+	if string(expectedBytes) != string(actualBytes) {
+		t.Errorf("Output JSON does not match expected format.\nExpected: %s\nGot: %s", expected, actual)
 	}
 }
 
@@ -91,11 +89,4 @@ type MockDialog struct {
 // Show implements the dialog interface, returning the mocked response
 func (m *MockDialog) Show(message string, buttons []string, defaultButton string) string {
 	return m.response
-}
-
-// jsonEqual compares two JSON objects for structural equality
-func jsonEqual(a, b map[string]interface{}) bool {
-	aJSON, _ := json.Marshal(a)
-	bJSON, _ := json.Marshal(b)
-	return string(aJSON) == string(bJSON)
 }
