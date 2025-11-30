@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 const (
@@ -51,30 +52,46 @@ func handlePermissionRequestHook(stdin io.Reader, stdout io.Writer, dialog Dialo
 	// Show dialog with buttons
 	response := dialog.Show(message, []string{"Allow", "Deny"}, "Allow")
 
+	// Parse response for behavior and optional message
+	behavior, msg := parseDialogResponse(response)
+
 	// Create output based on user's decision
-	behavior := getBehaviorFromResponse(response)
-	output := createHookResponse(behavior)
+	output := createHookResponse(behavior, msg)
 
 	return json.NewEncoder(stdout).Encode(output)
 }
 
-// getBehaviorFromResponse converts dialog button response to behavior string
-func getBehaviorFromResponse(response string) string {
-	if response == buttonIndexAllow {
-		return behaviorAllow
+// parseDialogResponse parses the dialog response which may contain an optional message
+// Format: "buttonIndex" or "buttonIndex|message"
+// Returns: (behavior, message)
+func parseDialogResponse(response string) (string, string) {
+	parts := strings.SplitN(response, "|", 2)
+	buttonIndex := parts[0]
+	message := ""
+	if len(parts) > 1 {
+		message = parts[1]
 	}
-	return behaviorDeny
+
+	behavior := behaviorDeny
+	if buttonIndex == buttonIndexAllow {
+		behavior = behaviorAllow
+	}
+
+	return behavior, message
 }
 
 // createHookResponse creates the JSON response structure for the hook
-func createHookResponse(behavior string) map[string]interface{} {
+func createHookResponse(behavior string, message string) map[string]interface{} {
 	decision := map[string]interface{}{
 		"behavior": behavior,
 	}
 
-	// Add interrupt:false when denying
+	// Add interrupt:false and optional message when denying
 	if behavior == behaviorDeny {
 		decision["interrupt"] = false
+		if message != "" {
+			decision["message"] = message
+		}
 	}
 
 	return map[string]interface{}{

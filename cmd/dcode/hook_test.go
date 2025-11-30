@@ -11,17 +11,26 @@ func TestPermissionRequestHook(t *testing.T) {
 	tests := []struct {
 		name           string
 		dialogResponse string
+		dialogMessage  string
 		expectedOutput string
 	}{
 		{
 			name:           "BashCommandAllow",
 			dialogResponse: "1", // Allow button
+			dialogMessage:  "",
 			expectedOutput: `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`,
 		},
 		{
 			name:           "BashCommandDeny",
 			dialogResponse: "2", // Deny button
+			dialogMessage:  "",
 			expectedOutput: `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","interrupt":false}}}`,
+		},
+		{
+			name:           "BashCommandDenyWithMessage",
+			dialogResponse: "2", // Deny button
+			dialogMessage:  "Not safe to run",
+			expectedOutput: `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Not safe to run","interrupt":false}}}`,
 		},
 	}
 
@@ -30,7 +39,10 @@ func TestPermissionRequestHook(t *testing.T) {
 			// Arrange: Create input JSON for a Bash command
 			stdin := createTestInput(t)
 			var stdout bytes.Buffer
-			mockDialog := &MockDialog{response: tt.dialogResponse}
+			mockDialog := &MockDialog{
+				response: tt.dialogResponse,
+				message:  tt.dialogMessage,
+			}
 
 			// Act: Call the hook handler
 			err := handlePermissionRequestHook(stdin, &stdout, mockDialog)
@@ -84,9 +96,14 @@ func assertJSONEqual(t *testing.T, expected, actual string) {
 // MockDialog is a mock implementation of the dialog interface for testing
 type MockDialog struct {
 	response string
+	message  string
 }
 
 // Show implements the dialog interface, returning the mocked response
+// For deny responses with a message, it appends the message after a pipe separator
 func (m *MockDialog) Show(message string, buttons []string, defaultButton string) string {
+	if m.message != "" {
+		return m.response + "|" + m.message
+	}
 	return m.response
 }
