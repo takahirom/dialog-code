@@ -76,3 +76,5 @@ coverage.html
 *.pid
 *.seed
 *.pid.lock
+
+tmp/
