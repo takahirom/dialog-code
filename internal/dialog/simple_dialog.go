@@ -103,7 +103,7 @@ func (d *SimpleOSDialog) parseAppleScriptResult(output string, buttons []string)
 
 		// Find the matching button and return its index (1-based)
 		for i, button := range buttons {
-			if button == buttonName || (len(button) > 50 && strings.HasPrefix(button, buttonName[:47])) {
+			if button == buttonName || (len(button) > 50 && len(buttonName) >= 47 && strings.HasPrefix(button, buttonName[:47])) {
 				return fmt.Sprintf("%d", i+1)
 			}
 		}

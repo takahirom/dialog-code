@@ -50,8 +50,8 @@ func handlePermissionRequestHook(stdin io.Reader, stdout io.Writer, dialog Dialo
 	// Format message for dialog
 	message := formatDialogMessage(toolName, toolInput)
 
-	// Show dialog with buttons
-	response := dialog.Show(message, []string{"Allow", "Deny"}, "Allow")
+	// Show dialog with buttons (default to Deny for security)
+	response := dialog.Show(message, []string{"Allow", "Deny"}, "Deny")
 
 	// Parse response for behavior and optional message
 	behavior, msg := parseDialogResponse(response, timeout)
@@ -128,14 +128,17 @@ func formatDialogMessage(toolName string, toolInput map[string]interface{}) stri
 
 // parseTimeoutFlag parses --timeout=N from command line arguments
 // Returns default of 60 seconds if not specified or invalid
+// Valid range: 5-3600 seconds
 func parseTimeoutFlag(args []string) int {
 	const defaultTimeout = 60
+	const minTimeout = 5
+	const maxTimeout = 3600
 	const prefix = "--timeout="
 
 	for _, arg := range args {
 		if strings.HasPrefix(arg, prefix) {
 			valueStr := strings.TrimPrefix(arg, prefix)
-			if value, err := strconv.Atoi(valueStr); err == nil && value > 0 {
+			if value, err := strconv.Atoi(valueStr); err == nil && value >= minTimeout && value <= maxTimeout {
 				return value
 			}
 		}

@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 )
@@ -97,7 +99,7 @@ func TestEmptyStdinReturnsEOF(t *testing.T) {
 	}
 
 	// Assert: The error is EOF
-	if err.Error() != "EOF" {
+	if !errors.Is(err, io.EOF) {
 		t.Errorf("Expected EOF error, but got: %v", err)
 	}
 }
@@ -417,6 +419,31 @@ func TestParseTimeoutFlag(t *testing.T) {
 			name:            "Custom timeout 120 seconds",
 			args:            []string{"--timeout=120"},
 			expectedTimeout: 120,
+		},
+		{
+			name:            "Minimum timeout 5 seconds",
+			args:            []string{"--timeout=5"},
+			expectedTimeout: 5,
+		},
+		{
+			name:            "Maximum timeout 3600 seconds",
+			args:            []string{"--timeout=3600"},
+			expectedTimeout: 3600,
+		},
+		{
+			name:            "Below minimum defaults to 60",
+			args:            []string{"--timeout=4"},
+			expectedTimeout: 60,
+		},
+		{
+			name:            "Above maximum defaults to 60",
+			args:            []string{"--timeout=3601"},
+			expectedTimeout: 60,
+		},
+		{
+			name:            "Invalid value defaults to 60",
+			args:            []string{"--timeout=abc"},
+			expectedTimeout: 60,
 		},
 	}
 
