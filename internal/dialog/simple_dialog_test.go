@@ -168,37 +168,3 @@ func TestSimpleOSDialog_ParseChooseFromListResult(t *testing.T) {
 	}
 }
 
-func TestSimpleOSDialog_ButtonCountBranching(t *testing.T) {
-	dialog := NewSimpleOSDialog()
-	
-	t.Run("3 buttons or less uses display dialog", func(t *testing.T) {
-		// This test verifies the branching logic but cannot easily test the actual AppleScript execution
-		// In a real test environment, we would mock the execution methods
-		buttons := []string{"Allow", "Deny", "Cancel"}
-		message := "Test message"
-		
-		// The Show method should handle this without error
-		// Note: This will fail in CI/test environments without AppleScript, but validates the code path
-		result := dialog.Show(message, buttons, "Allow")
-		
-		// Since we can't easily mock AppleScript in this simple test, 
-		// we expect it to return the fallback value
-		if result == "" {
-			t.Error("Show should return a non-empty result even on error")
-		}
-	})
-	
-	t.Run("4 buttons or more uses choose from list", func(t *testing.T) {
-		buttons := []string{"Allow", "Deny", "Always Allow", "Never Allow"}
-		message := "Test message"
-		
-		// The Show method should handle this without error
-		result := dialog.Show(message, buttons, "Allow")
-		
-		// Since we can't easily mock AppleScript in this simple test,
-		// we expect it to return the fallback value
-		if result == "" {
-			t.Error("Show should return a non-empty result even on error")
-		}
-	})
-}

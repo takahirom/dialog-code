@@ -1,9 +1,8 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "dialog",
     srcs = [
-        "dialog.go",
         "simple_dialog.go",
     ],
     importpath = "github.com/takahirom/dialog-code/internal/dialog",
@@ -11,4 +10,10 @@ go_library(
     deps = [
         "//internal/debug",
     ],
+)
+
+go_test(
+    name = "dialog_test",
+    srcs = ["simple_dialog_test.go"],
+    embed = [":dialog"],
 )
