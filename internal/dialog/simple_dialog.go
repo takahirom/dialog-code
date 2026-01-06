@@ -10,11 +10,20 @@ import (
 )
 
 // SimpleOSDialog provides pure OS dialog functionality without message processing
-type SimpleOSDialog struct{}
+type SimpleOSDialog struct {
+	timeout int // Timeout in seconds (default 60)
+}
 
-// NewSimpleOSDialog creates a new simple OS dialog
+// NewSimpleOSDialog creates a new simple OS dialog with default 60 second timeout
 func NewSimpleOSDialog() *SimpleOSDialog {
-	return &SimpleOSDialog{}
+	return &SimpleOSDialog{timeout: 60}
+}
+
+// SetTimeout sets the dialog timeout in seconds
+func (d *SimpleOSDialog) SetTimeout(seconds int) {
+	if seconds > 0 {
+		d.timeout = seconds
+	}
 }
 
 // Show displays a dialog with the given message and buttons, returns the selected button text
@@ -38,7 +47,7 @@ func (d *SimpleOSDialog) Show(message string, buttons []string, defaultButton st
 func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []string, defaultButton string) string {
 	// Escape message for AppleScript
 	escapedMessage := d.escapeForAppleScript(message)
-	
+
 	// Build buttons string for AppleScript
 	var buttonStrings []string
 	for _, button := range buttons {
@@ -49,13 +58,13 @@ func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []stri
 		buttonStrings = append(buttonStrings, fmt.Sprintf(`"%s"`, d.escapeForAppleScript(button)))
 	}
 	buttonsStr := strings.Join(buttonStrings, ",")
-	
-	// Build AppleScript command
-	script := fmt.Sprintf(`display dialog "%s" with title "Claude Permission" buttons {%s} default button "%s"`,
-		escapedMessage, buttonsStr, d.escapeForAppleScript(defaultButton))
-	
+
+	// Build AppleScript command with configurable timeout
+	script := fmt.Sprintf(`display dialog "%s" with title "Claude Permission" buttons {%s} default button "%s" giving up after %d`,
+		escapedMessage, buttonsStr, d.escapeForAppleScript(defaultButton), d.timeout)
+
 	debug.Printf("[DEBUG] SimpleOSDialog: Executing AppleScript: %s\n", script)
-	
+
 	// Execute AppleScript
 	cmd := exec.Command("osascript", "-e", script)
 	output, err := cmd.Output()
@@ -65,7 +74,7 @@ func (d *SimpleOSDialog) executeAppleScriptDialog(message string, buttons []stri
 		debug.Printf("[DEBUG] SimpleOSDialog: AppleScript error: %v, returning \"%s\"\n", err, maxChoice)
 		return maxChoice
 	}
-	
+
 	// Parse the result to find which button was clicked
 	return d.parseAppleScriptResult(string(output), buttons)
 }
@@ -80,20 +89,26 @@ func (d *SimpleOSDialog) escapeForAppleScript(text string) string {
 
 // parseAppleScriptResult parses AppleScript output to determine which button was clicked
 func (d *SimpleOSDialog) parseAppleScriptResult(output string, buttons []string) string {
-	// AppleScript returns "button returned:ButtonName"
-	re := regexp.MustCompile(`button returned:(.+)`)
+	// Check if dialog timed out (gave up:true)
+	if strings.Contains(output, "gave up:true") {
+		debug.Printf("[DEBUG] SimpleOSDialog: Dialog timed out, returning empty string\n")
+		return ""
+	}
+
+	// AppleScript returns "button returned:ButtonName, gave up:false"
+	re := regexp.MustCompile(`button returned:([^,]+)`)
 	matches := re.FindStringSubmatch(output)
 	if len(matches) > 1 {
 		buttonName := strings.TrimSpace(matches[1])
-		
+
 		// Find the matching button and return its index (1-based)
 		for i, button := range buttons {
-			if button == buttonName || (len(button) > 50 && strings.HasPrefix(button, buttonName[:47])) {
+			if button == buttonName || (len(button) > 50 && len(buttonName) >= 47 && strings.HasPrefix(button, buttonName[:47])) {
 				return fmt.Sprintf("%d", i+1)
 			}
 		}
 	}
-	
+
 	// Default to last button if parsing fails (most restrictive choice)
 	maxChoice := fmt.Sprintf("%d", len(buttons))
 	debug.Printf("[DEBUG] SimpleOSDialog: No button match found, returning last button \"%s\"\n", maxChoice)
